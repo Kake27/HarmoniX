@@ -11,9 +11,10 @@ except Exception:
     from services.worker.processors.transposition import transpose_audio
 
 ROOT = Path(__file__).resolve().parents[5]
-UPLOAD_DIR = ROOT/"services"/"api"/"local_store"/"uploads"
-PROCESSED_DIR = ROOT/"services"/"api"/"local_store"/"processed"
-MANIFEST_DIR = ROOT/"services"/"api"/"local_store"/"manifests"
+# print("ROOT transpose:", ROOT)
+UPLOAD_DIR = ROOT/"api"/"local_store"/"uploads"
+PROCESSED_DIR = ROOT/"api"/"local_store"/"processed"
+MANIFEST_DIR = ROOT/"api"/"local_store"/"manifests"
 PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 MANIFEST_DIR.mkdir(parents=True, exist_ok=True)
 

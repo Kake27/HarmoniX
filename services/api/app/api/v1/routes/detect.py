@@ -9,7 +9,8 @@ except Exception:
     from services.worker.processors.key_detection import detect_key_global
 
 ROOT = Path(__file__).resolve().parents[5]
-UPLOAD_DIR = ROOT/"services"/"api"/"local_store"/"uploads"
+# print("ROOT detect:", ROOT)
+UPLOAD_DIR = ROOT/"api"/"local_store"/"uploads"
 
 router = APIRouter()
 

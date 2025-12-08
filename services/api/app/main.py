@@ -8,7 +8,9 @@ from fastapi.staticfiles import StaticFiles
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
-from api.v1.routes import detect, tracks, transpose, uploads
+from api.app.api.v1.routes import detect, tracks, transpose, uploads
+
+# from api.v1.routes import detect, tracks, transpose, uploads
 
 app = FastAPI(title="HarmoniX")
 
@@ -23,7 +25,7 @@ STORAGE = ROOT/"services"/"api"/"local_store"
 (STORAGE/"uploads").mkdir(parents=True, exist_ok=True)
 (STORAGE/"processed").mkdir(parents=True, exist_ok=True)
 
-app.mount("media", StaticFiles(directory=str(STORAGE)), name="media")
+app.mount("/media", StaticFiles(directory=str(STORAGE)), name="media")
 
 app.include_router(uploads.router, prefix="/api/v1")
 app.include_router(detect.router, prefix="/api/v1")

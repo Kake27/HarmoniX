@@ -3,9 +3,10 @@ from pathlib import Path
 import json
 
 ROOT = Path(__file__).resolve().parents[5]
-UPLOAD_DIR = ROOT/"services"/"api"/"local_store"/"uploads"
-PROCESSED_DIR = ROOT/"services"/"api"/"local_store"/"processed"
-MANIFEST_DIR = ROOT/"services"/"api"/"local_store"/"manifests"
+# print("ROOt tracks:", ROOT)
+UPLOAD_DIR = ROOT/"api"/"local_store"/"uploads"
+PROCESSED_DIR = ROOT/"api"/"local_store"/"processed"
+MANIFEST_DIR = ROOT/"api"/"local_store"/"manifests"
 
 router = APIRouter()
 
