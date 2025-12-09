@@ -27,6 +27,7 @@ function App() {
   }
 
   async function handleDetect() {
+    // console.log(uploaded)
     if (!uploaded) return;
     setLoadingDetect(true);
     setError(null);

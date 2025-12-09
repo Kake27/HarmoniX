@@ -39,15 +39,21 @@ export function uploadFile(file: File, onProgress?: (percent: number) => void): 
 
 export async function detectScale(track_id: string, topk=3): Promise<DetectResponse>{
     const url = `${API_BASE}/api/v1/detect`;
-    const body = new URLSearchParams();
-    body.append("track_id", track_id);
-    body.append("topk", String(topk));
+    // const body = new URLSearchParams();
+    // body.append("track_id", track_id);
+    // body.append("topk", String(topk));
 
     const res = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: body.toString(),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          track_id,
+          topk,
+          window: 0.0
+        }),
     });
+
+    console.log(res);
     if (!res.ok) {
         const text = await res.text();
         throw new Error(`Scale detection failed: ${res.status} ${text}`);

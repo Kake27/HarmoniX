@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from pathlib import Path
 import librosa
-import json
+from ..models.detect import DetectRequest
 
 try: 
     from worker.processors.key_detection import detect_key_global
@@ -15,11 +15,18 @@ UPLOAD_DIR = ROOT/"api"/"local_store"/"uploads"
 router = APIRouter()
 
 @router.post("/detect")
-def detect_key(track_id: str, topk: int=3, window: float=0.0):
+def detect_key(req: DetectRequest):
+    track_id = req.track_id
+    topk = req.topk
+    window = req.window
+    
     matches = list(UPLOAD_DIR.glob(f"{track_id}.*"))
+    # print(matches)
     if not matches:
         raise HTTPException(status_code=404, detail="track_id not found")
     file_path = str(matches[0])
+
+    print(file_path)
 
     y, sr = librosa.load(file_path, sr=22050, mono=True)
 
