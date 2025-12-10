@@ -1,5 +1,15 @@
 type UploadResponse = { track_id: string; filename: string; stored_path: string };
 type DetectResponse = { track_id: string; candidates: any[]; meta?: any };
+export type TransposeResponse = { job_id: string; status?: string}
+
+export type JobStatus = {
+  job_id: string;
+  status: "queued" | "processing" | "done" | "error";
+  progress?: number;
+  out_name?: string;
+  processed_url?: string;
+  error?: string;
+}
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
 
@@ -60,4 +70,46 @@ export async function detectScale(track_id: string, topk=3): Promise<DetectRespo
     }
     const data = await res.json();
     return data as DetectResponse;
+}
+
+export async function transposeTrack(track_id: string, semitones: number): Promise<TransposeResponse> {
+  const url = `${API_BASE}/api/v1/transpose`
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      track_id, semitones
+    })
+  })
+
+  if(!res.ok) {
+    const text = await res.text();
+    throw new Error(`Transpose request failed: ${res.status} ${text}`);
+  }
+
+  return (await res.json()) as TransposeResponse
+}
+
+export async function pollJobStatus(job_id: string, intervalMs = 1500, timeoutMs = 5 * 60 * 1000): Promise<JobStatus> {
+  const start = Date.now();
+
+  while (true) {
+    const res = await fetch(`${API_BASE}/api/v1/jobs/${encodeURIComponent(job_id)}`);
+    
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`Job status check failed: ${res.status} ${txt}`);
+    }
+
+    const data = (await res.json()) as JobStatus;
+    if (data.status === "done" || data.status === "error") {
+      return data;
+    }
+    if (Date.now() - start > timeoutMs) {
+      throw new Error("Job polling timed out");
+    }
+    // wait
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
 }
