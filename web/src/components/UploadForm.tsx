@@ -1,9 +1,10 @@
 import { useRef, useState } from "react";
 import { Upload, File, AlertCircle } from "lucide-react";
 import { uploadFile } from "../services/api";
+import Metronome from "./Metronome";
 
 type Props = {
-  onUploaded: (info: { track_id: string; filename: string }) => void;
+  onUploaded: (info: { track_id: string; filename: string, stored_path: string }) => void;
 };
 
 export default function UploadForm({ onUploaded }: Props) {
@@ -12,6 +13,8 @@ export default function UploadForm({ onUploaded }: Props) {
   const [progress, setProgress] = useState<number | null>(null);
   const [filename, setFilename] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const [uploadedSrc, setUploadedSrc] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -27,13 +30,13 @@ export default function UploadForm({ onUploaded }: Props) {
 
     try {
       const res = await uploadFile(file, (p) => setProgress(p));
-      onUploaded({ track_id: res.track_id, filename: file.name });
+      onUploaded({ track_id: res.track_id, filename: file.name, stored_path: res.stored_path });
     } catch (err: any) {
-      console.error(err);
-      setError(err?.message || "Upload failed");
+        console.error(err);
+        setError(err?.message || "Upload failed");
     } finally {
-      setUploading(false);
-      setProgress(null);
+        setUploading(false);
+        setProgress(null);
     }
   }
 

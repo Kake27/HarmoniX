@@ -1,38 +1,24 @@
-import { useState } from "react";
-import {
-  Music,
-  ChevronLeft,
-  ChevronRight,
-  Sparkles,
-  Moon,
-  Sun,
-  AlertCircle,
-  Loader2,
-  Play,
-  ExternalLink,
-  Upload,
-} from "lucide-react";
+import React, { useRef, useState } from "react";
+import { Music, ChevronLeft, ChevronRight, Moon, Sun, Loader2, Play, ExternalLink, Upload} from "lucide-react";
 import UploadForm from "./components/UploadForm";
-import { detectScale, transposeTrack, pollJobStatus } from "./services/api";
+import { transposeTrack, pollJobStatus } from "./services/api";
 import { useTheme } from "./contexts/ThemeContext";
+import { useScaleDetection } from "./hooks/scaleDetection";
+import TrackPanel from "./components/TrackPanel";
+import CandidatesList from "./components/CandidatesList";
+import ErrorMessage from "./components/Errors";
 
-type Candidate = {
-  rank: number;
-  tonic_ind: number;
-  tonic_name_sharp: string;
-  tonic_name_flat: string;
-  mode: string;
-  score: number;
-  gap_to_next: number;
-};
 
 const NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
 function App() {
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const {detect, loading, candidates, scaleError} = useScaleDetection()
+
   const { theme, toggleTheme } = useTheme();
-  const [uploaded, setUploaded] = useState<{ track_id: string; filename: string } | null>(null);
+  const [uploaded, setUploaded] = useState<{ track_id: string; filename: string, stored_path: string } | null>(null);
   const [loadingDetect, setLoadingDetect] = useState(false);
-  const [candidates, setCandidates] = useState<Candidate[] | null>(null);
+  // const [candidates, setCandidates] = useState<Candidate[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [detectedIndex, setDetectedIndex] = useState<number | null>(null);
@@ -42,9 +28,9 @@ function App() {
   const [jobProgressText, setJobProgressText] = useState<string | null>(null);
   const [processedUrl, setProcessedUrl] = useState<string | null>(null);
 
-  async function onUploaded(info: { track_id: string; filename: string }) {
+  async function onUploaded(info: { track_id: string; filename: string, stored_path: string }) {
     setUploaded(info);
-    setCandidates(null);
+    // setCandidates(null);
     setError(null);
     setDetectedIndex(null);
     setDetectedMode(null);
@@ -55,25 +41,34 @@ function App() {
   async function handleDetect() {
     if (!uploaded) return;
     setLoadingDetect(true);
-    setError(null);
-    setCandidates(null);
-    setDetectedIndex(null);
-    try {
-      const res = await detectScale(uploaded.track_id, 3);
-      setCandidates(res.candidates ?? null);
-
-      if (res.candidates && res.candidates.length > 0) {
-        const best = res.candidates[0];
-        setDetectedIndex(best.tonic_index);
-        setDetectedMode(best.mode);
-        setOffset(0);
-      }
-    } catch (err: any) {
-      console.error(err);
-      setError(err?.message || "Detection failed");
-    } finally {
-      setLoadingDetect(false);
+    const best = await detect(uploaded.track_id)
+    if(best) {
+      // console.log(best)
+      setDetectedIndex(best.tonic_index)
+      setDetectedMode(best.mode)
+      setOffset(0)
+      setLoadingDetect(false)
     }
+    
+    // setError(null);
+    // setCandidates(null);
+    // setDetectedIndex(null);
+    // try {
+    //   const res = await detectScale(uploaded.track_id, 3);
+    //   // setCandidates(res.candidates ?? null);
+
+    //   if (res.candidates && res.candidates.length > 0) {
+    //     const best = res.candidates[0];
+    //     setDetectedIndex(best.tonic_index);
+    //     setDetectedMode(best.mode);
+    //     setOffset(0);
+    //   }
+    // } catch (err: any) {
+    //   console.error(err);
+    //   setError(err?.message || "Detection failed");
+    // } finally {
+    //   setLoadingDetect(false);
+    // }
   }
 
   function displayedNote() {
@@ -111,25 +106,20 @@ function App() {
 
       const final = await pollJobStatus(resp.job_id, 1200, 5 * 60 * 1000);
       if (final.status === "done" && final.processed_url) {
-        const apiBase = (import.meta.env.VITE_API_BASE || "http://localhost:8000").replace(
-          /\/$/,
-          ""
-        );
-        const url = final.processed_url.startsWith("http")
-          ? final.processed_url
-          : apiBase + final.processed_url;
-        setProcessedUrl(url);
-        setJobProgressText(null);
+          const apiBase = (import.meta.env.VITE_API_BASE || "http://localhost:8000").replace(/\/$/,"");
+          const url = final.processed_url.startsWith("http") ? final.processed_url : apiBase + final.processed_url;
+          setProcessedUrl(url);
+          setJobProgressText(null);
       } else {
-        setError(final.error || "Transposition failed");
-        setJobProgressText(null);
+          setError(final.error || "Transposition failed");
+          setJobProgressText(null);
       }
     } catch (err: any) {
-      console.error(err);
-      setError(err?.message || "Transpose failed");
-      setJobProgressText(null);
+        console.error(err);
+        setError(err?.message || "Transpose failed");
+        setJobProgressText(null);
     } finally {
-      setApplyingTranspose(false);
+        setApplyingTranspose(false);
     }
   }
 
@@ -139,7 +129,7 @@ function App() {
         <header className="mb-8 md:mb-12">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl shadow-lg">
+              <div className="p-2.5 bg-linear-to-br from-blue-500 to-blue-600 rounded-xl shadow-lg">
                 <Music className="w-7 h-7 text-white" />
               </div>
               <div>
@@ -173,78 +163,19 @@ function App() {
             </h2>
             <UploadForm onUploaded={onUploaded} />
           </div>
+         
 
           {uploaded && (
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 transition-colors duration-300">
-              <div className="flex items-start justify-between gap-4 flex-wrap">
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
-                    Current Track
-                  </h3>
-                  <p className="text-lg font-semibold text-gray-900 dark:text-white truncate">
-                    {uploaded.filename}
-                  </p>
-                </div>
-                <button
-                  onClick={handleDetect}
-                  disabled={loadingDetect}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-all shadow-sm"
-                >
-                  {loadingDetect ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Detecting...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-4 h-4" />
-                      Detect Scale
-                    </>
-                  )}
-                </button>
-              </div>
+              <TrackPanel
+                filename={uploaded.filename}
+                audioSrc={`${import.meta.env.VITE_API_BASE || "http://localhost:8000"}${uploaded.stored_path}`}
+                audioRef={audioRef as React.RefObject<HTMLAudioElement>}
+                onDetect={handleDetect}
+                loading={loadingDetect} />
 
               {candidates && candidates.length > 0 && (
-                <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
-                  <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-                    Top Candidates
-                  </h4>
-                  <div className="space-y-2">
-                    {candidates.map((c, idx) => (
-                      <div
-                        key={c.rank}
-                        className={`flex items-center justify-between p-3 rounded-lg ${
-                          idx === 0
-                            ? "bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800"
-                            : "bg-gray-50 dark:bg-gray-700/50"
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <span
-                            className={`text-xs font-bold ${
-                              idx === 0
-                                ? "text-blue-600 dark:text-blue-400"
-                                : "text-gray-500 dark:text-gray-400"
-                            }`}
-                          >
-                            #{c.rank}
-                          </span>
-                          <div>
-                            <span className="font-semibold text-gray-900 dark:text-white">
-                              {c.tonic_name_sharp}
-                            </span>
-                            <span className="ml-2 text-gray-600 dark:text-gray-400">
-                              {c.mode}
-                            </span>
-                          </div>
-                        </div>
-                        <span className="text-sm text-gray-600 dark:text-gray-400">
-                          Score: {c.score.toFixed(3)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                <CandidatesList candidates={candidates} />
               )}
             </div>
           )}
@@ -295,7 +226,7 @@ function App() {
                   <button
                     onClick={handleApplyTranspose}
                     disabled={applyingTranspose}
-                    className="w-full lg:w-auto flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-all shadow-sm"
+                    className="w-full lg:w-auto flex items-center justify-center gap-2 px-6 py-3 bg-linear-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-all shadow-sm"
                   >
                     {applyingTranspose ? (
                       <>
@@ -345,16 +276,12 @@ function App() {
           )}
 
           {error && (
-            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4 transition-colors duration-300">
-              <div className="flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
-                <div>
-                  <h4 className="font-semibold text-red-800 dark:text-red-400 mb-1">Error</h4>
-                  <p className="text-sm text-red-700 dark:text-red-400">{error}</p>
-                </div>
-              </div>
-            </div>
+            <ErrorMessage title="Error" message={error} onClose={() => setError(null)} />
           )}
+          {scaleError && (
+            <ErrorMessage title="Detection Error" message={scaleError} variant="warning" onClose={() => {}} />
+          )}
+          
         </div>
       </div>
     </div>
