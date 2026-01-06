@@ -13,7 +13,7 @@ const NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
 function App() {
   const audioRef = useRef<HTMLAudioElement | null>(null)
-  const {detect, loading, candidates, scaleError} = useScaleDetection()
+  const {detect, candidates, scaleError} = useScaleDetection()
 
   const { theme, toggleTheme } = useTheme();
   const [uploaded, setUploaded] = useState<{ track_id: string; filename: string, stored_path: string } | null>(null);
@@ -114,9 +114,10 @@ function App() {
           setError(final.error || "Transposition failed");
           setJobProgressText(null);
       }
-    } catch (err: any) {
+    } catch (err: Error | unknown) {
+        const errorMessage = err instanceof Error ? err.message : "Transpose failed";
         console.error(err);
-        setError(err?.message || "Transpose failed");
+        setError(errorMessage);
         setJobProgressText(null);
     } finally {
         setApplyingTranspose(false);

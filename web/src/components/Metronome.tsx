@@ -24,14 +24,17 @@ export default function Metronome({audioRef, initialBpm = 90, onBpmChange}: Prop
             }
 
             if(audioCtxRef.current) {
-                try {audioCtxRef.current.close()} catch {}
+                try {audioCtxRef.current.close()} catch {
+                    // ignore
+                }
             }
         }
     }, [])
 
     function ensureAudioContext() {
         if (!audioCtxRef.current) {
-            audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+            audioCtxRef.current = new AudioContextClass();
         }
         return audioCtxRef.current;
     }
