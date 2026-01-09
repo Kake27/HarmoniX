@@ -34,7 +34,7 @@ export function uploadFile(file: File, onProgress?: (percent: number) => void): 
         try {
           const data = JSON.parse(xhr.responseText);
           resolve(data);
-        } catch (err) {
+        } catch {
           reject(new Error("Invalid JSON response"));
         }
       } else {
@@ -45,6 +45,15 @@ export function uploadFile(file: File, onProgress?: (percent: number) => void): 
     xhr.onerror = () => reject(new Error("Network error during upload"));
     xhr.send(fd);
   });
+}
+
+export async function deleteTrack(trackId: string) {
+  const res = await fetch(`${API_BASE}/api/v1/delete/${trackId}`,{ method: "DELETE" })
+
+  if (!res.ok) {
+    const err = await res.json()
+    throw new Error(err.detail || "Delete failed")
+  }
 }
 
 export async function detectScale(track_id: string, topk=3): Promise<DetectResponse>{

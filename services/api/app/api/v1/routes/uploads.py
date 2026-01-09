@@ -30,3 +30,22 @@ async def upload_file(file: UploadFile = File(...)):
         "filename": file.filename,
         "stored_path": f"/media/uploads/{dest_path.name}"
     }
+
+@router.delete("/delete/{track_id}")
+async def delete_file(track_id: str):
+    matches = list(UPLOAD_DIR.glob(f"{track_id}.*"))
+
+    if not matches:
+        raise HTTPException(status_code=404, detail="Track not found")
+    
+    file_path = matches[0]
+    try:
+        file_path.unlink()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete track: {str(e)}")
+    
+    return {
+        "status": "success",
+        "track_id": track_id,
+        "filename": file_path.name
+    }

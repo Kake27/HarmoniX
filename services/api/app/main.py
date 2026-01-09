@@ -10,8 +10,6 @@ sys.path.insert(0, str(ROOT))
 
 from api.app.api.v1.routes import detect, tracks, transpose, uploads
 
-# from api.v1.routes import detect, tracks, transpose, uploads
-
 app = FastAPI(title="HarmoniX")
 
 app.add_middleware(

@@ -69,7 +69,7 @@ export default function UploadForm({ onUploaded }: Props) {
           <button
             type="submit"
             disabled={uploading}
-            className="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors shadow-sm"
+            className="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors shadow-sm cursor-pointer"
           >
             {uploading ? "Uploading..." : "Upload"}
           </button>
@@ -92,7 +92,7 @@ export default function UploadForm({ onUploaded }: Props) {
       )}
 
       {filename && !uploading && !error && (
-        <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg px-3 py-2">
+        <div className="flex w-fit items-center gap-2 text-sm text-gray-600 dark:text-gray-400 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg px-3 py-2">
           <File className="w-4 h-4 text-green-600 dark:text-green-400" />
           <span>{filename}</span>
         </div>

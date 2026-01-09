@@ -124,34 +124,34 @@ export default function Metronome({audioRef, initialBpm = 90, onBpmChange}: Prop
     }
 
     return (
-    <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-      <div>
-        <button onClick={() => changeBpm(Math.max(20, bpm - 1))}>-</button>
-        <span style={{ margin: "0 10px", minWidth: 72, display: "inline-block", textAlign: "center" }}>
-          <div style={{ fontSize: 20, fontWeight: 600 }}>{bpm} BPM</div>
-          <div style={{ fontSize: 12, opacity: 0.8 }}>{running ? "playing" : "stopped"}</div>
-        </span>
-        <button onClick={() => changeBpm(Math.min(300, bpm + 1))}>+</button>
-      </div>
+        <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }} className="text-white">
+            <div>
+                <button onClick={() => changeBpm(Math.max(20, bpm - 1))}>-</button>
+                <span style={{ margin: "0 10px", minWidth: 72, display: "inline-block", textAlign: "center" }}>
+                <div style={{ fontSize: 20, fontWeight: 600 }}>{bpm} BPM</div>
+                <div style={{ fontSize: 12, opacity: 0.8 }}>{running ? "playing" : "stopped"}</div>
+                </span>
+                <button onClick={() => changeBpm(Math.min(300, bpm + 1))}>+</button>
+            </div>
 
-      <div>
-        <input
-          type="range"
-          min={30}
-          max={240}
-          value={bpm}
-          onChange={(e) => changeBpm(Number(e.target.value))}
-        />
-      </div>
+            <div>
+                <input
+                type="range"
+                min={30}
+                max={240}
+                value={bpm}
+                onChange={(e) => changeBpm(Number(e.target.value))}
+                />
+            </div>
 
-      <div>
-        {!running ? (
-          <button onClick={start}>Play Metronome</button>
-        ) : (
-          <button onClick={stop}>Stop Metronome</button>
-        )}
-      </div>
-    </div>
+            <div>
+                {!running ? (
+                <button onClick={start} className="text-gray-200 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg cursor-pointer hover:opacity-75 px-3 py-2">Play Metronome</button>
+                ) : (
+                <button onClick={stop}>Stop Metronome</button>
+                )}
+            </div>
+        </div>
   );
 
 }

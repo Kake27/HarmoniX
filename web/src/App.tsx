@@ -1,12 +1,13 @@
 import React, { useRef, useState } from "react";
 import { Music, ChevronLeft, ChevronRight, Moon, Sun, Loader2, Play, ExternalLink, Upload} from "lucide-react";
 import UploadForm from "./components/UploadForm";
-import { transposeTrack, pollJobStatus } from "./services/api";
+import { transposeTrack, pollJobStatus, deleteTrack } from "./services/api";
 import { useTheme } from "./contexts/ThemeContext";
 import { useScaleDetection } from "./hooks/scaleDetection";
 import TrackPanel from "./components/TrackPanel";
 import CandidatesList from "./components/CandidatesList";
 import ErrorMessage from "./components/Errors";
+import PopupDialog from "./components/PopupDialog";
 
 
 const NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
@@ -20,6 +21,7 @@ function App() {
   const [loadingDetect, setLoadingDetect] = useState(false);
   // const [candidates, setCandidates] = useState<Candidate[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   const [detectedIndex, setDetectedIndex] = useState<number | null>(null);
   const [detectedMode, setDetectedMode] = useState<string | null>(null);
@@ -36,6 +38,28 @@ function App() {
     setDetectedMode(null);
     setOffset(0);
     setProcessedUrl(null);
+  }
+
+  async function handleDelete() {
+    if(!uploaded) return;
+
+    try {
+      await deleteTrack(uploaded.track_id)
+
+      setUploaded(null)
+      setDetectedIndex(null)
+      setDetectedMode(null)
+      setProcessedUrl(null)
+      setError(null)
+    }
+    catch(err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : "Delete failed";
+      setError(errorMessage);
+    }
+    finally {
+      setShowDeleteConfirm(false)
+    }
+    
   }
 
   async function handleDetect() {
@@ -174,6 +198,17 @@ function App() {
                 audioRef={audioRef as React.RefObject<HTMLAudioElement>}
                 onDetect={handleDetect}
                 loading={loadingDetect} />
+
+              <button onClick={() => setShowDeleteConfirm(true)} className="mt-4 text-sm text-red-600 hover:underline cursor-pointer" >Delete Track</button>
+
+              {showDeleteConfirm && (
+                <PopupDialog
+                  title="Delete uploaded track?"
+                  message="This will permanently remove the track from the server."
+                  onCancel={() => setShowDeleteConfirm(false)}
+                  onConfirm={handleDelete}
+                />
+              )}
 
               {candidates && candidates.length > 0 && (
                 <CandidatesList candidates={candidates} />

@@ -24,8 +24,8 @@ export function useScaleDetection() {
       const res = await detectScale(trackId, 3)
       setCandidates(res.candidates ?? null)
       return res.candidates?.[0] ?? null
-    } catch (e: any) {
-      setError(e.message ?? "Detection failed")
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Detection failed")
       return null
     } finally {
       setLoading(false)
