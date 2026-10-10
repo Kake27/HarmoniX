@@ -37,7 +37,7 @@ def get_current_user(
             f"{settings.supabase_url.rstrip('/')}/auth/v1/user",
             headers={
                 "Authorization": f"Bearer {access_token}",
-                "apikey": settings.supabase_anon_key,
+                "apikey": settings.supabase_publishable_key,
             },
             timeout=10.0,
         )
