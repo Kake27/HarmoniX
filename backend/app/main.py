@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import users
+from app.api import users, analysis
 from app.core.config import settings
 
 app = FastAPI(title="Harmonix API",
@@ -12,12 +12,12 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.frontend_url],
     allow_credentials=False,
-    allow_methods=["GET", "OPTIONS"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Accept"]
-
 )
 
 app.include_router(users.router, prefix="/api/v1")
+app.include_router(analysis.router, prefix="/api/v1")
 
 @app.get("/", tags=["Root"])
 async def root():
