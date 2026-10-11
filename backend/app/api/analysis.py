@@ -2,11 +2,12 @@ import logging
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, File, HTTPException, UploadFile, status, Depends
 from starlette.concurrency import run_in_threadpool
 
 from app.processing.analysis.runner import run_analysis
 from app.schemas.analysis_response import AnalysisResponse
+from app.core.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,9 @@ ALLOWED_EXTENSIONS = {
 
 
 @router.post("/analyse", response_model=AnalysisResponse, summary="Analyse an audio track")
-async def analyse_audio(file: UploadFile = File(...)) -> AnalysisResponse:
+async def analyse_audio(
+    file: UploadFile = File(...), 
+    current_user = Depends(get_current_user)) -> AnalysisResponse:
     filename = Path(file.filename or "audio").name
     suffix = Path(filename).suffix.lower()
 
@@ -71,6 +74,12 @@ async def analyse_audio(file: UploadFile = File(...)) -> AnalysisResponse:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=str(exc),
+            ) from exc
+        except Exception as exc:
+            logger.exception("Audio decoding or analysis pipeline failed")
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Could not decode or analyse this audio file. Try a valid audio file.",
             ) from exc
 
         if not any(
