@@ -7,6 +7,7 @@ import type {
   AnalysisResponse,
   BPMData,
   MusicalKeyData,
+  UploadedAudio,
 } from "../services/api";
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
@@ -52,6 +53,9 @@ export default function HomePage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploadedAudio, setUploadedAudio] = useState<UploadedAudio | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState("");
@@ -94,8 +98,10 @@ export default function HomePage() {
   }
 
   function handleFileChange(file?: File) {
+    setUploadError("");
     setAnalysisError("");
     setAnalysis(null);
+    setUploadedAudio(null);
 
     if (!file) {
       setSelectedFile(null);
@@ -125,14 +131,37 @@ export default function HomePage() {
     setSelectedFile(file);
   }
 
+  async function handleUpload() {
+    if (!selectedFile || isUploading || isAnalyzing) return;
+    setUploadError("");
+    setUploadedAudio(null);
+    setIsUploading(true);
+
+    try {
+      const result = await api.uploadAudio(selectedFile);
+      setUploadedAudio(result);
+    } catch (error: unknown) {
+      if (error instanceof ApiError && error.status === 401) {
+        await signOut();
+        navigate("/login", { replace: true });
+        return;
+      }
+      setUploadError(
+        error instanceof Error ? error.message : "Could not upload this file.",
+      );
+    } finally {
+      setIsUploading(false);
+    }
+  }
+
   async function handleAnalyse() {
-    if (!selectedFile || isAnalyzing) return;
+    if (!uploadedAudio || isAnalyzing || isUploading) return;
     setAnalysisError("");
     setAnalysis(null);
     setIsAnalyzing(true);
 
     try {
-      const result = await api.analyseAudio(selectedFile);
+      const result = await api.analyseStoredAudio(uploadedAudio.id);
       setAnalysis(result);
     } catch (error: unknown) {
       if (error instanceof ApiError && error.status === 401) {
@@ -195,13 +224,31 @@ export default function HomePage() {
             id="audio-file"
             type="file"
             accept=".wav,.mp3,.flac,.ogg,.m4a,.aac,audio/*"
-            disabled={isAnalyzing}
+            disabled={isUploading || isAnalyzing}
             onChange={(event) => handleFileChange(event.target.files?.[0])}
           />
         </div>
 
         {selectedFile && (
           <p><strong>Selected:</strong> {selectedFile.name} ({formatFileSize(selectedFile.size)})</p>
+        )}
+
+        {uploadError && (
+          <div role="alert"><p className="auth-error">{uploadError}</p></div>
+        )}
+
+        <button
+          type="button"
+          onClick={() => void handleUpload()}
+          disabled={!selectedFile || isUploading || isAnalyzing || !!uploadedAudio}
+        >
+          {isUploading ? "Uploading to storage..." : uploadedAudio ? "Uploaded" : "Upload track"}
+        </button>
+
+        {uploadedAudio && (
+          <p role="status">
+            Upload complete. Your track is stored and ready for analysis.
+          </p>
         )}
 
         {analysisError && (
@@ -211,13 +258,13 @@ export default function HomePage() {
         <button
           type="button"
           onClick={() => void handleAnalyse()}
-          disabled={!selectedFile || isAnalyzing}
+          disabled={!uploadedAudio || isUploading || isAnalyzing}
         >
-          {isAnalyzing ? "Uploading and analysing..." : "Analyse track"}
+          {isAnalyzing ? "Analysing stored track..." : "Analyse track"}
         </button>
 
         {isAnalyzing && (
-          <p role="status">Your audio is being analysed. Longer tracks may take a little while.</p>
+          <p role="status">Your stored audio is being analysed. Longer tracks may take a little while.</p>
         )}
 
         {analysis && (

@@ -13,6 +13,14 @@ export interface UserProfile {
   created_at: string;
 }
 
+export interface UploadedAudio {
+  id: string;
+  original_filename: string;
+  file_format: string;
+  file_size_bytes: number;
+  status: string;
+}
+
 export interface AnalyserResult {
   status: "success" | "failed";
   data: Record<string, unknown> | null;
@@ -117,9 +125,39 @@ async function apiRequest<T>(path: string): Promise<T> {
   return (await response.json()) as T;
 }
 
+async function apiFormRequest<T>(path: string, formData: FormData): Promise<T> {
+  const token = await getAccessToken();
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new ApiError(await getErrorMessage(response), response.status);
+  }
+
+  return (await response.json()) as T;
+}
+
 export const api = {
   getMyProfile(): Promise<UserProfile> {
     return apiRequest<UserProfile>("/users/me");
+  },
+
+  uploadAudio(file: File): Promise<UploadedAudio> {
+    const formData = new FormData();
+    formData.append("file", file);
+    return apiFormRequest<UploadedAudio>("/audio", formData);
+  },
+
+  analyseStoredAudio(audioId: string): Promise<AnalysisResponse> {
+    const formData = new FormData();
+    formData.append("audio_id", audioId);
+    return apiFormRequest<AnalysisResponse>("/analyse", formData);
   },
 
   async analyseAudio(file: File): Promise<AnalysisResponse> {
