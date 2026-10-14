@@ -1,15 +1,16 @@
-
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
     String,
+    Text,
     func,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -30,7 +31,7 @@ class AudioAnalysis(Base):
         index=True,
     )
 
-    bpm: Mapped[int | None] = mapped_column(
+    bpm: Mapped[float | None] = mapped_column(
         Float,
         nullable=True,
     )
@@ -40,6 +41,18 @@ class AudioAnalysis(Base):
     )
     mode: Mapped[str | None] = mapped_column(
         String(20),
+        nullable=True,
+    )
+    status: Mapped[str | None] = mapped_column(
+        String(20),
+        nullable=True,
+    )
+    results: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB,
+        nullable=True,
+    )
+    error_message: Mapped[str | None] = mapped_column(
+        Text,
         nullable=True,
     )
     analysis_version: Mapped[str] = mapped_column(

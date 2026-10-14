@@ -12,7 +12,7 @@ def make_settings(**overrides) -> Settings:
         "supabase_publishable_key": "test-key",
     }
     values.update(overrides)
-    return Settings(**values)
+    return Settings(_env_file=None, **values)
 
 
 class ObjectStorageTests(unittest.TestCase):

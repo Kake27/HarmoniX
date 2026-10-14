@@ -21,10 +21,57 @@ export interface UploadedAudio {
   status: string;
 }
 
+export type AnalysisStatus =
+  | "PENDING"
+  | "PROCESSING"
+  | "COMPLETED"
+  | "PARTIAL"
+  | "FAILED";
+
+export interface AudioLibraryItem {
+  id: string;
+  original_filename: string;
+  file_format: string;
+  file_size_bytes: number;
+  duration: number | null;
+  sample_rate: number | null;
+  channels: number | null;
+  status: string;
+  created_at: string;
+  analysis_status: AnalysisStatus;
+  bpm: number | null;
+  musical_key: string | null;
+  mode: string | null;
+}
+
+export interface AudioLibraryResponse {
+  items: AudioLibraryItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface AnalyserResult {
   status: "success" | "failed";
   data: Record<string, unknown> | null;
   error: string | null;
+}
+
+export interface PersistedAnalysis {
+  status: AnalysisStatus;
+  analysis_version: string;
+  created_at: string;
+  bpm: number | null;
+  musical_key: string | null;
+  mode: string | null;
+  error_message: string | null;
+  results: Record<string, AnalyserResult> | null;
+}
+
+export interface AudioDetailResponse extends AudioLibraryItem {
+  user_id: string;
+  parent_audio_id: string | null;
+  analysis: PersistedAnalysis | null;
 }
 
 export interface AnalysisResponse {
@@ -152,6 +199,18 @@ export const api = {
     const formData = new FormData();
     formData.append("file", file);
     return apiFormRequest<UploadedAudio>("/audio", formData);
+  },
+
+  listAudio(limit = 50, offset = 0): Promise<AudioLibraryResponse> {
+    const params = new URLSearchParams({
+      limit: String(limit),
+      offset: String(offset),
+    });
+    return apiRequest<AudioLibraryResponse>(`/audio?${params.toString()}`);
+  },
+
+  getAudio(audioId: string): Promise<AudioDetailResponse> {
+    return apiRequest<AudioDetailResponse>(`/audio/${encodeURIComponent(audioId)}`);
   },
 
   analyseStoredAudio(audioId: string): Promise<AnalysisResponse> {

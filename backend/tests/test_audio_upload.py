@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.api.deps import get_db
 from app.core.auth import get_current_user
+from app.core.audio_metadata import AudioMetadata
 from app.main import app
 from app.models.user import User
 
@@ -42,12 +43,18 @@ class AudioUploadApiTests(unittest.TestCase):
         app.dependency_overrides.clear()
         self.client.close()
 
+    @patch("app.api.audio.extract_audio_metadata")
     @patch("app.api.audio.object_storage.upload_fileobj")
     def test_upload_stores_object_and_creates_user_owned_row(
-        self, upload_fileobj
+        self, upload_fileobj, extract_metadata
     ) -> None:
         upload_fileobj.return_value = (
             "s3://harmonix-audio/users/test/audio/test.wav"
+        )
+        extract_metadata.return_value = AudioMetadata(
+            duration=12.5,
+            sample_rate=44100,
+            channels=2,
         )
 
         response = self.client.post(
@@ -63,8 +70,12 @@ class AudioUploadApiTests(unittest.TestCase):
         )
         self.assertIn(str(self.user.id), upload_fileobj.call_args.args[1])
         self.assertEqual(self.db.audio.file_size_bytes, len(b"audio bytes"))
+        self.assertEqual(self.db.audio.duration, 12.5)
+        self.assertEqual(self.db.audio.sample_rate, 44100)
+        self.assertEqual(self.db.audio.channels, 2)
         self.assertEqual(response.json()["id"], str(self.db.audio.id))
         upload_fileobj.assert_called_once()
+        extract_metadata.assert_called_once()
 
     @patch("app.api.audio.object_storage.upload_fileobj")
     def test_upload_rejects_unsupported_file_before_storage(
@@ -80,12 +91,18 @@ class AudioUploadApiTests(unittest.TestCase):
 
     @patch("app.api.audio.object_storage.delete_object")
     @patch("app.api.audio.object_storage.upload_fileobj")
+    @patch("app.api.audio.extract_audio_metadata")
     def test_database_failure_removes_uploaded_object(
-        self, upload_fileobj, delete_object
+        self, extract_metadata, upload_fileobj, delete_object
     ) -> None:
         self.db.fail_commit = True
         storage_url = "s3://harmonix-audio/users/test/audio/test.wav"
         upload_fileobj.return_value = storage_url
+        extract_metadata.return_value = AudioMetadata(
+            duration=None,
+            sample_rate=None,
+            channels=None,
+        )
 
         response = self.client.post(
             "/api/v1/audio",
@@ -95,3 +112,27 @@ class AudioUploadApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 500)
         delete_object.assert_called_once_with(storage_url)
         self.assertIsNone(self.db.audio)
+
+    @patch("app.api.audio.extract_audio_metadata")
+    @patch("app.api.audio.object_storage.upload_fileobj")
+    def test_unavailable_audio_metadata_is_saved_as_null(
+        self, upload_fileobj, extract_metadata
+    ) -> None:
+        upload_fileobj.return_value = (
+            "s3://harmonix-audio/users/test/audio/test.wav"
+        )
+        extract_metadata.return_value = AudioMetadata(
+            duration=None,
+            sample_rate=None,
+            channels=None,
+        )
+
+        response = self.client.post(
+            "/api/v1/audio",
+            files={"file": ("track.wav", b"audio bytes", "audio/wav")},
+        )
+
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertIsNone(self.db.audio.duration)
+        self.assertIsNone(self.db.audio.sample_rate)
+        self.assertIsNone(self.db.audio.channels)

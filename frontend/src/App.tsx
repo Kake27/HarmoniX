@@ -5,6 +5,7 @@ import { ProtectedRoute } from "./components/ProtectedRoute";
 import { PublicRoute } from "./components/PublicRoute";
 
 import HomePage from "./pages/HomePage";
+import AudioDetailPage from "./pages/AudioDetailPage";
 import LoginPage from "./pages/LoginPage"
 import SignupPage from "./pages/SignUpPage";
 
@@ -24,6 +25,7 @@ export default function App() {
           {/* Protected pages: users without a session go to /login */}
           <Route element={<ProtectedRoute />}>
             <Route path="/" element={<HomePage />} />
+            <Route path="/audio/:audioId" element={<AudioDetailPage />} />
           </Route>
 
           {/* Unknown URLs return to the entry point */}

@@ -42,6 +42,10 @@ selected is reported as an error; it never falls back to local storage.
 
 The upload endpoint returns success only after both object upload and database
 metadata creation succeed. It streams request chunks through a bounded temporary
-file and enforces the same 50 MB limit as direct analysis. The existing
+file and enforces the same 50 MB limit as direct analysis. After storing the
+object, the API reads duration, sample rate, and channel count from the original
+audio and includes any values it can determine in the `audio_files` row. It uses
+SoundFile first and audioread as a fallback; fields unavailable from both remain
+`NULL`. The existing
 `POST /api/v1/analyse` endpoint still accepts a multipart `file`; it also accepts
 an `audio_id` form field to analyze a previously stored, user-owned object.

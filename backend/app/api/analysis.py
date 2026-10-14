@@ -15,6 +15,7 @@ from app.schemas.analysis_response import AnalysisResponse
 from app.core.auth import get_current_user
 from app.core.storage import StorageError, object_storage
 from app.models.audio_data import AudioFileData
+from app.models.audio_analysis import AudioAnalysis
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,39 @@ ALLOWED_EXTENSIONS = {
     ".m4a",
     ".aac",
 }
+ANALYSIS_VERSION = "1"
+
+
+def _commit_analysis(db: Session) -> None:
+    try:
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.exception("Could not persist audio analysis")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not save analysis results.",
+        ) from exc
+
+
+def _mark_analysis_failed(
+    db: Session,
+    analysis: AudioAnalysis | None,
+    message: str,
+) -> None:
+    if analysis is None:
+        return
+    analysis.status = "FAILED"
+    analysis.error_message = message
+    _commit_analysis(db)
+
+
+def _analysis_value(results: dict, analyzer_name: str, field: str):
+    analyzer = results.get(analyzer_name)
+    if not isinstance(analyzer, dict) or analyzer.get("status") != "success":
+        return None
+    data = analyzer.get("data")
+    return data.get(field) if isinstance(data, dict) else None
 
 
 @router.post("/analyse", response_model=AnalysisResponse, summary="Analyse an audio track")
@@ -72,6 +106,16 @@ async def analyse_audio(
             detail="Unsupported format. Use WAV, MP3, FLAC, OGG, M4A or AAC.",
         )
 
+    analysis_record: AudioAnalysis | None = None
+    if audio is not None:
+        analysis_record = AudioAnalysis(
+            audio_id=audio.id,
+            status="PROCESSING",
+            analysis_version=ANALYSIS_VERSION,
+        )
+        db.add(analysis_record)
+        _commit_analysis(db)
+
     temp_path: Path | None = None
 
     try:
@@ -86,6 +130,9 @@ async def analyse_audio(
                     temp_path,
                 )
             except StorageError as exc:
+                _mark_analysis_failed(
+                    db, analysis_record, "Could not retrieve the stored audio."
+                )
                 raise HTTPException(
                     status_code=status.HTTP_502_BAD_GATEWAY,
                     detail="Could not retrieve the stored audio.",
@@ -119,21 +166,53 @@ async def analyse_audio(
         try:
             result = await run_in_threadpool(run_analysis, temp_path)
         except ValueError as exc:
+            _mark_analysis_failed(db, analysis_record, str(exc))
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=str(exc),
             ) from exc
         except Exception as exc:
             logger.exception("Audio decoding or analysis pipeline failed")
+            _mark_analysis_failed(
+                db,
+                analysis_record,
+                "Could not decode or analyse this audio file.",
+            )
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="Could not decode or analyse this audio file. Try a valid audio file.",
             ) from exc
 
-        if not any(
-            item["status"] == "success"
+        successful_results = [
+            item
             for item in result["results"].values()
-        ):
+            if item["status"] == "success"
+        ]
+        if analysis_record is not None:
+            analysis_record.results = result["results"]
+            analysis_record.bpm = _analysis_value(
+                result["results"], "bpm", "bpm"
+            )
+            analysis_record.musical_key = _analysis_value(
+                result["results"], "musical_key", "key"
+            )
+            analysis_record.mode = _analysis_value(
+                result["results"], "musical_key", "mode"
+            )
+            if not successful_results:
+                analysis_record.status = "FAILED"
+                analysis_record.error_message = (
+                    "No analyzer could produce a valid result."
+                )
+            elif len(successful_results) < len(result["results"]):
+                analysis_record.status = "PARTIAL"
+                analysis_record.error_message = None
+            else:
+                analysis_record.status = "COMPLETED"
+                analysis_record.error_message = None
+            _commit_analysis(db)
+
+        if not successful_results:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail={
@@ -144,9 +223,31 @@ async def analyse_audio(
 
         return AnalysisResponse(filename=filename, **result)
 
+    except HTTPException as exc:
+        if analysis_record is not None and analysis_record.status == "PROCESSING":
+            message = (
+                exc.detail
+                if isinstance(exc.detail, str)
+                else "Analysis could not be completed."
+            )
+            _mark_analysis_failed(db, analysis_record, message)
+        raise
+    except Exception as exc:
+        logger.exception("Unexpected error while analysing stored audio")
+        if analysis_record is not None and analysis_record.status == "PROCESSING":
+            _mark_analysis_failed(
+                db, analysis_record, "Analysis could not be completed."
+            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not analyse this audio file.",
+        ) from exc
     finally:
         if file is not None:
             await file.close()
 
         if temp_path is not None:
-            temp_path.unlink(missing_ok=True)
+            try:
+                temp_path.unlink(missing_ok=True)
+            except OSError:
+                logger.exception("Could not remove temporary analysis audio")
