@@ -23,17 +23,21 @@ export default function AudioDetailPage() {
   const [audioOwnerId, setAudioOwnerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisError, setAnalysisError] = useState("");
 
-  const loadAudio = useCallback(async () => {
+  const loadAudio = useCallback(async (showLoading = true) => {
     if (!audioId) {
       setError("Audio file not found.");
       setLoading(false);
       return;
     }
 
-    setLoading(true);
-    setError("");
-    setAudio(null);
+    if (showLoading) {
+      setLoading(true);
+      setError("");
+      setAudio(null);
+    }
     try {
       const result = await api.getAudio(audioId);
       setAudio(result);
@@ -50,7 +54,7 @@ export default function AudioDetailPage() {
           : "Could not load this audio file.",
       );
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   }, [audioId, navigate, signOut, user]);
 
@@ -60,6 +64,31 @@ export default function AudioDetailPage() {
 
   const visibleAudio =
     audio?.id === audioId && audioOwnerId === user?.id ? audio : null;
+
+  async function handleAnalyse() {
+    if (!audioId || isAnalyzing) return;
+
+    setIsAnalyzing(true);
+    setAnalysisError("");
+    try {
+      await api.analyseStoredAudio(audioId);
+      await loadAudio(false);
+    } catch (requestError: unknown) {
+      if (requestError instanceof ApiError && requestError.status === 401) {
+        await signOut();
+        navigate("/login", { replace: true });
+        return;
+      }
+      setAnalysisError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Could not analyse this audio file.",
+      );
+      await loadAudio(false);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  }
 
   return (
     <main className="home-container">
@@ -102,10 +131,35 @@ export default function AudioDetailPage() {
             {visibleAudio.analysis_status === "PROCESSING" && (
               <p role="status">Analysis is currently processing.</p>
             )}
+            {isAnalyzing && (
+              <p role="status">Analysing this audio file...</p>
+            )}
             {visibleAudio.analysis_status === "FAILED" && (
               <p role="alert" className="auth-error">
                 {visibleAudio.analysis?.error_message ?? "Analysis failed."}
               </p>
+            )}
+            {analysisError && (
+              <div role="alert">
+                <p className="auth-error">{analysisError}</p>
+                <button type="button" onClick={() => void handleAnalyse()} disabled={isAnalyzing}>
+                  Retry analysis
+                </button>
+              </div>
+            )}
+            {(visibleAudio.analysis_status === "PENDING" ||
+              visibleAudio.analysis_status === "FAILED") && !analysisError && (
+              <button
+                type="button"
+                onClick={() => void handleAnalyse()}
+                disabled={isAnalyzing}
+              >
+                {isAnalyzing
+                  ? "Analysing..."
+                  : visibleAudio.analysis_status === "FAILED"
+                    ? "Retry analysis"
+                    : "Analyse this audio"}
+              </button>
             )}
             {visibleAudio.analysis && (
               <>
