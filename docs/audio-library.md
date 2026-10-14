@@ -6,6 +6,7 @@ Supabase user, in newest-first order:
 
 - `GET /api/v1/audio?limit=50&offset=0`
 - `GET /api/v1/audio/{audio_id}`
+- `DELETE /api/v1/audio/{audio_id}`
 
 The detail endpoint returns the latest saved analysis and does not trigger
 processing. An audio file without an analysis row is reported as `PENDING`.
@@ -13,6 +14,13 @@ Analysis requests for a stored audio file create a `PROCESSING` analysis record,
 then persist the complete analyzer result map and a terminal `COMPLETED`,
 `PARTIAL`, or `FAILED` status. The existing synchronous analyze endpoint and
 response shape are retained.
+
+Deleting an audio file requires an authenticated owner. The endpoint removes
+the selected file and its recursively derived tracks owned by the same user,
+including their stored objects, audio metadata, and analysis records. If object
+storage cleanup fails, database records are retained and the request returns
+an error so deletion can be retried. The detail page asks for confirmation
+before sending the request.
 
 ## Database update
 

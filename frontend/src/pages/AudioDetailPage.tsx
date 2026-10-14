@@ -25,6 +25,8 @@ export default function AudioDetailPage() {
   const [error, setError] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   const loadAudio = useCallback(async (showLoading = true) => {
     if (!audioId) {
@@ -90,6 +92,34 @@ export default function AudioDetailPage() {
     }
   }
 
+  async function handleDelete() {
+    if (!audioId || isDeleting) return;
+    const confirmed = window.confirm(
+      "Delete this audio file and all tracks derived from it? This also permanently deletes their stored audio and analysis data.",
+    );
+    if (!confirmed) return;
+
+    setIsDeleting(true);
+    setDeleteError("");
+    try {
+      await api.deleteAudio(audioId);
+      navigate("/", { replace: true });
+    } catch (requestError: unknown) {
+      if (requestError instanceof ApiError && requestError.status === 401) {
+        await signOut();
+        navigate("/login", { replace: true });
+        return;
+      }
+      setDeleteError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Could not delete this audio file.",
+      );
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
   return (
     <main className="home-container">
       <p><Link to="/">Back to library</Link></p>
@@ -108,7 +138,26 @@ export default function AudioDetailPage() {
           <header>
             <h1>{visibleAudio.original_filename}</h1>
             <p>Analysis status: {visibleAudio.analysis_status.toLowerCase()}</p>
+            <button
+              type="button"
+              onClick={() => void handleDelete()}
+              disabled={isDeleting || isAnalyzing}
+            >
+              {isDeleting ? "Deleting..." : "Delete audio"}
+            </button>
           </header>
+          {deleteError && (
+            <div role="alert">
+              <p className="auth-error">{deleteError}</p>
+              <button
+                type="button"
+                onClick={() => void handleDelete()}
+                disabled={isDeleting || isAnalyzing}
+              >
+                Retry delete
+              </button>
+            </div>
+          )}
 
           <section aria-labelledby="audio-metadata-heading">
             <h2 id="audio-metadata-heading">Audio metadata</h2>

@@ -226,6 +226,83 @@ def get_audio(
     )
 
 
+@router.delete(
+    "/{audio_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete an owned audio file and its derived tracks",
+)
+def delete_audio(
+    audio_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> None:
+    audio = (
+        db.query(AudioFileData)
+        .filter(
+            AudioFileData.id == audio_id,
+            AudioFileData.user_id == current_user.id,
+        )
+        .first()
+    )
+    if audio is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Audio file not found.",
+        )
+
+    audio_files = [audio]
+    audio_ids = {audio.id}
+    parent_ids = [audio.id]
+    while parent_ids:
+        children = (
+            db.query(AudioFileData)
+            .filter(
+                AudioFileData.parent_audio_id.in_(parent_ids),
+                AudioFileData.user_id == current_user.id,
+            )
+            .all()
+        )
+        parent_ids = []
+        for child in children:
+            if child.id not in audio_ids:
+                audio_ids.add(child.id)
+                audio_files.append(child)
+                parent_ids.append(child.id)
+
+    for item in audio_files:
+        try:
+            object_storage.delete_object(item.storage_url)
+        except (StorageError, ValueError) as exc:
+            logger.exception(
+                "Could not delete stored audio while removing audio family %s",
+                audio_id,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Could not remove all stored audio files. Please retry.",
+            ) from exc
+
+    try:
+        db.query(AudioAnalysis).filter(
+            AudioAnalysis.audio_id.in_(audio_ids)
+        ).delete(synchronize_session=False)
+        db.query(AudioFileData).filter(
+            AudioFileData.id.in_(audio_ids),
+            AudioFileData.user_id == current_user.id,
+        ).delete(synchronize_session=False)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.exception(
+            "Could not remove audio metadata for audio family %s",
+            audio_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not delete this audio file.",
+        ) from exc
+
+
 @router.post(
     "",
     response_model=AudioUploadResponse,

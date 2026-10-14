@@ -172,6 +172,21 @@ async function apiRequest<T>(path: string): Promise<T> {
   return (await response.json()) as T;
 }
 
+async function apiDeleteRequest(path: string): Promise<void> {
+  const token = await getAccessToken();
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new ApiError(await getErrorMessage(response), response.status);
+  }
+}
+
 async function apiFormRequest<T>(path: string, formData: FormData): Promise<T> {
   const token = await getAccessToken();
   const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -211,6 +226,10 @@ export const api = {
 
   getAudio(audioId: string): Promise<AudioDetailResponse> {
     return apiRequest<AudioDetailResponse>(`/audio/${encodeURIComponent(audioId)}`);
+  },
+
+  deleteAudio(audioId: string): Promise<void> {
+    return apiDeleteRequest(`/audio/${encodeURIComponent(audioId)}`);
   },
 
   analyseStoredAudio(audioId: string): Promise<AnalysisResponse> {
