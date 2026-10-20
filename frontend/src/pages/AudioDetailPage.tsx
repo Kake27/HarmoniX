@@ -58,7 +58,7 @@ export default function AudioDetailPage() {
     } finally {
       if (showLoading) setLoading(false);
     }
-  }, [audioId, navigate, signOut, user]);
+  }, [audioId, navigate, signOut, user?.id]);
 
   useEffect(() => {
     void loadAudio();
