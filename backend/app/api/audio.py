@@ -3,9 +3,9 @@ import mimetypes
 import tempfile
 import uuid
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
@@ -19,6 +19,7 @@ from app.models.audio_data import AudioFileData
 from app.models.user import User
 from app.schemas.audio_library import (
     AnalysisStatus,
+    AudioAccessUrlResponse,
     AudioDetailResponse,
     AudioLibraryItem,
     AudioLibraryResponse,
@@ -30,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/audio", tags=["Audio"])
 MAX_LIBRARY_LIMIT = 100
+PRESIGNED_URL_TTL_SECONDS = 900
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 ALLOWED_EXTENSIONS = {
@@ -165,6 +167,59 @@ def list_audio(
         total=total or 0,
         limit=limit,
         offset=offset,
+    )
+
+
+@router.get(
+    "/{audio_id}/access-url",
+    response_model=AudioAccessUrlResponse,
+    summary="Create a short-lived playback or download URL for owned audio",
+)
+def get_audio_access_url(
+    audio_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+    response: Response,
+    disposition: Literal["inline", "attachment"] = "inline",
+) -> AudioAccessUrlResponse:
+    audio = (
+        db.query(AudioFileData)
+        .filter(
+            AudioFileData.id == audio_id,
+            AudioFileData.user_id == current_user.id,
+        )
+        .first()
+    )
+    if audio is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Audio file not found.",
+        )
+
+    if object_storage.provider != "r2":
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Audio playback and downloads are currently available only with Cloudflare R2.",
+        )
+
+    try:
+        url = object_storage.create_presigned_get_url(
+            audio.storage_url,
+            audio.original_filename,
+            disposition,
+            PRESIGNED_URL_TTL_SECONDS,
+        )
+    except (StorageError, ValueError) as exc:
+        logger.exception("Could not create access URL for audio %s", audio_id)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Could not prepare access to this audio file.",
+        ) from exc
+
+    response.headers["Cache-Control"] = "no-store"
+    return AudioAccessUrlResponse(
+        url=url,
+        expires_in=PRESIGNED_URL_TTL_SECONDS,
     )
 
 

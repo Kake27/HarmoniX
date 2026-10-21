@@ -18,6 +18,7 @@ function formatDate(value: string): string {
 export default function AudioDetailPage() {
   const { audioId } = useParams<{ audioId: string }>();
   const { user, signOut } = useAuth();
+  const currentUserId = user?.id ?? null;
   const navigate = useNavigate();
   const [audio, setAudio] = useState<AudioDetailResponse | null>(null);
   const [audioOwnerId, setAudioOwnerId] = useState<string | null>(null);
@@ -27,6 +28,12 @@ export default function AudioDetailPage() {
   const [analysisError, setAnalysisError] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const [playback, setPlayback] = useState<{
+    audioId: string;
+    url: string;
+    error: string;
+  }>({ audioId: "", url: "", error: "" });
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const loadAudio = useCallback(async (showLoading = true) => {
     if (!audioId) {
@@ -43,7 +50,7 @@ export default function AudioDetailPage() {
     try {
       const result = await api.getAudio(audioId);
       setAudio(result);
-      setAudioOwnerId(user?.id ?? null);
+      setAudioOwnerId(currentUserId);
     } catch (requestError: unknown) {
       if (requestError instanceof ApiError && requestError.status === 401) {
         await signOut();
@@ -58,14 +65,44 @@ export default function AudioDetailPage() {
     } finally {
       if (showLoading) setLoading(false);
     }
-  }, [audioId, navigate, signOut, user?.id]);
+  }, [audioId, currentUserId, navigate, signOut]);
 
   useEffect(() => {
     void loadAudio();
   }, [loadAudio]);
 
-  const visibleAudio =
-    audio?.id === audioId && audioOwnerId === user?.id ? audio : null;
+  const visibleAudioId =
+    audio?.id === audioId && audioOwnerId === currentUserId ? audioId : null;
+  const visibleAudio = visibleAudioId ? audio : null;
+  const currentPlayback =
+    playback.audioId === visibleAudioId ? playback : null;
+  const playbackUrl = currentPlayback?.url ?? "";
+  const playbackError = currentPlayback?.error ?? "";
+  const isLoadingPlayback = Boolean(visibleAudio && !currentPlayback);
+
+  const refreshPlaybackUrl = useCallback(async (targetAudioId: string) => {
+    try {
+      const access = await api.getAudioAccessUrl(targetAudioId, "inline");
+      setPlayback({ audioId: targetAudioId, url: access.url, error: "" });
+    } catch (requestError: unknown) {
+      if (requestError instanceof ApiError && requestError.status === 401) {
+        await signOut();
+        navigate("/login", { replace: true });
+        return;
+      }
+      setPlayback({
+        audioId: targetAudioId,
+        url: "",
+        error: requestError instanceof Error
+          ? requestError.message
+          : "Could not load audio playback.",
+      });
+    }
+  }, [navigate, signOut]);
+
+  useEffect(() => {
+    if (visibleAudioId) void refreshPlaybackUrl(visibleAudioId);
+  }, [refreshPlaybackUrl, visibleAudioId]);
 
   async function handleAnalyse() {
     if (!audioId || isAnalyzing) return;
@@ -120,6 +157,30 @@ export default function AudioDetailPage() {
     }
   }
 
+  async function handleDownload() {
+    if (!audioId || isDownloading) return;
+    setIsDownloading(true);
+    try {
+      const access = await api.getAudioAccessUrl(audioId, "attachment");
+      window.location.assign(access.url);
+    } catch (requestError: unknown) {
+      if (requestError instanceof ApiError && requestError.status === 401) {
+        await signOut();
+        navigate("/login", { replace: true });
+        return;
+      }
+      setPlayback((current) => ({
+        audioId,
+        url: current.audioId === audioId ? current.url : "",
+        error: requestError instanceof Error
+          ? requestError.message
+          : "Could not prepare this audio for download.",
+      }));
+    } finally {
+      setIsDownloading(false);
+    }
+  }
+
   return (
     <main className="home-container">
       <p><Link to="/">Back to library</Link></p>
@@ -170,6 +231,45 @@ export default function AudioDetailPage() {
               <dt>File size</dt><dd>{visibleAudio.file_size_bytes.toLocaleString()} bytes</dd>
               <dt>Uploaded</dt><dd>{formatDate(visibleAudio.created_at)}</dd>
             </dl>
+          </section>
+
+          <section aria-labelledby="audio-playback-heading">
+            <h2 id="audio-playback-heading">Audio</h2>
+            {isLoadingPlayback && <p role="status">Preparing audio...</p>}
+            {playbackUrl && (
+              <audio
+                controls
+                preload="metadata"
+                src={playbackUrl}
+                onError={() => setPlayback({
+                  audioId: visibleAudio.id,
+                  url: playbackUrl,
+                  error: "Could not play this audio. The access link may have expired.",
+                })}
+                aria-label={`Play ${visibleAudio.original_filename}`}
+              >
+                Your browser does not support audio playback.
+              </audio>
+            )}
+            {playbackError && (
+              <div role="alert">
+                <p className="auth-error">{playbackError}</p>
+                <button
+                  type="button"
+                  onClick={() => void refreshPlaybackUrl(visibleAudio.id)}
+                  disabled={isLoadingPlayback}
+                >
+                  Refresh playback
+                </button>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => void handleDownload()}
+              disabled={isDownloading}
+            >
+              {isDownloading ? "Preparing download..." : "Download audio"}
+            </button>
           </section>
 
           <section aria-labelledby="saved-analysis-heading">

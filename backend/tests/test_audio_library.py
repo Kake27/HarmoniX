@@ -4,11 +4,11 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Response
 from fastapi.testclient import TestClient
 
 from app.api.deps import get_db
-from app.api.audio import get_audio, list_audio
+from app.api.audio import get_audio, get_audio_access_url, list_audio
 from app.core.auth import get_current_user
 from app.main import app
 from app.models.audio_analysis import AudioAnalysis
@@ -223,6 +223,70 @@ class AudioLibraryApiTests(unittest.TestCase):
 
         self.assertEqual(response.analysis_status, "PENDING")
         self.assertIsNone(response.analysis)
+
+    @patch("app.api.audio.object_storage.create_presigned_get_url")
+    @patch("app.api.audio.object_storage.provider", "r2")
+    def test_access_url_is_created_only_for_owned_audio(
+        self, create_presigned_url
+    ) -> None:
+        audio = make_audio(self.user.id)
+        create_presigned_url.return_value = "https://signed.example/audio"
+        response_headers = Response()
+
+        response = get_audio_access_url(
+            audio.id,
+            self.user,
+            DetailDatabase(audio),
+            response_headers,
+            disposition="inline",
+        )
+
+        self.assertEqual(response.url, "https://signed.example/audio")
+        self.assertEqual(response.expires_in, 900)
+        self.assertEqual(response_headers.headers["Cache-Control"], "no-store")
+        create_presigned_url.assert_called_once_with(
+            audio.storage_url,
+            audio.original_filename,
+            "inline",
+            900,
+        )
+
+    @patch("app.api.audio.object_storage.create_presigned_get_url")
+    @patch("app.api.audio.object_storage.provider", "r2")
+    def test_access_url_hides_audio_owned_by_another_user(
+        self, create_presigned_url
+    ) -> None:
+        db = DetailDatabase(None)
+
+        with self.assertRaises(HTTPException) as raised:
+            get_audio_access_url(
+                uuid.uuid4(),
+                self.user,
+                db,
+                Response(),
+                disposition="attachment",
+            )
+
+        self.assertEqual(raised.exception.status_code, 404)
+        create_presigned_url.assert_not_called()
+
+    @patch("app.api.audio.object_storage.create_presigned_get_url")
+    @patch("app.api.audio.object_storage.provider", "minio")
+    def test_access_url_is_unavailable_when_minio_is_selected(
+        self, create_presigned_url
+    ) -> None:
+        audio = make_audio(self.user.id)
+        with self.assertRaises(HTTPException) as raised:
+            get_audio_access_url(
+                audio.id,
+                self.user,
+                DetailDatabase(audio),
+                Response(),
+                disposition="inline",
+            )
+
+        self.assertEqual(raised.exception.status_code, 503)
+        create_presigned_url.assert_not_called()
 
     def test_library_validates_pagination(self) -> None:
         with self.assertRaises(HTTPException) as raised:

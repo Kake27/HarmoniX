@@ -1,8 +1,9 @@
 import unittest
+from unittest.mock import Mock
 from unittest.mock import patch
 
 from app.core.config import Settings
-from app.core.storage import ObjectStorage
+from app.core.storage import ObjectStorage, StorageError
 
 
 def make_settings(**overrides) -> Settings:
@@ -75,6 +76,68 @@ class ObjectStorageTests(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             storage._parse_storage_url("s3://other-bucket/audio.wav")
+
+    @patch("app.core.storage.boto3.client")
+    def test_generates_short_lived_url_with_requested_disposition(
+        self, client_factory
+    ) -> None:
+        s3_client = Mock()
+        s3_client.generate_presigned_url.return_value = "https://signed.example/audio"
+        client_factory.return_value = s3_client
+        storage = ObjectStorage(
+            make_settings(
+                r2_account_id="account",
+                r2_access_key_id="access",
+                r2_secret_access_key="secret",
+                r2_bucket_name="harmonix-audio",
+            )
+        )
+
+        url = storage.create_presigned_get_url(
+            "s3://harmonix-audio/users/user/audio/track.wav",
+            "track name.wav",
+            "attachment",
+            900,
+        )
+
+        self.assertEqual(url, "https://signed.example/audio")
+        args, kwargs = s3_client.generate_presigned_url.call_args
+        self.assertEqual(args[0], "get_object")
+        self.assertEqual(kwargs["Params"]["Bucket"], "harmonix-audio")
+        self.assertEqual(kwargs["Params"]["Key"], "users/user/audio/track.wav")
+        disposition = kwargs["Params"]["ResponseContentDisposition"]
+        self.assertIn("attachment", disposition)
+        self.assertIn("filename*=UTF-8''track%20name.wav", disposition)
+        self.assertEqual(kwargs["ExpiresIn"], 900)
+
+    def test_rejects_invalid_presigned_url_disposition(self) -> None:
+        storage = ObjectStorage(
+            make_settings(
+                r2_account_id="account",
+                r2_access_key_id="access",
+                r2_secret_access_key="secret",
+                r2_bucket_name="harmonix-audio",
+            )
+        )
+
+        with self.assertRaisesRegex(ValueError, "content disposition"):
+            storage.create_presigned_get_url(
+                "s3://harmonix-audio/users/user/audio/track.wav",
+                "track.wav",
+                "form-data",
+                900,
+            )
+
+    def test_refuses_presigned_urls_when_minio_is_selected(self) -> None:
+        storage = ObjectStorage(make_settings())
+
+        with self.assertRaisesRegex(StorageError, "only available with Cloudflare R2"):
+            storage.create_presigned_get_url(
+                "s3://harmonix-audio/users/user/audio/track.wav",
+                "track.wav",
+                "inline",
+                900,
+            )
 
 
 if __name__ == "__main__":

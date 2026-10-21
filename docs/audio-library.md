@@ -6,10 +6,17 @@ Supabase user, in newest-first order:
 
 - `GET /api/v1/audio?limit=50&offset=0`
 - `GET /api/v1/audio/{audio_id}`
+- `GET /api/v1/audio/{audio_id}/access-url?disposition=inline`
+- `GET /api/v1/audio/{audio_id}/access-url?disposition=attachment`
 - `DELETE /api/v1/audio/{audio_id}`
 
 The detail endpoint returns the latest saved analysis and does not trigger
 processing. An audio file without an analysis row is reported as `PENDING`.
+The access URL endpoint verifies ownership and creates a 15-minute presigned
+URL for playback (`inline`) or download (`attachment`) when R2 is configured.
+URL issuing is currently unavailable with MinIO. The frontend uses the private
+object store directly for media transfer; signed URLs are temporary and are
+not persisted in the database or browser storage.
 Analysis requests for a stored audio file create a `PROCESSING` analysis record,
 then persist the complete analyzer result map and a terminal `COMPLETED`,
 `PARTIAL`, or `FAILED` status. The existing synchronous analyze endpoint and

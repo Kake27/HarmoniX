@@ -40,6 +40,12 @@ If any R2 setting is supplied without the others, API initialization fails
 instead of silently choosing MinIO. A connection or upload failure after R2 is
 selected is reported as an error; it never falls back to local storage.
 
+The authenticated `GET /api/v1/audio/{audio_id}/access-url` endpoint returns a
+15-minute presigned GET URL for `inline` playback or `attachment` download when
+Cloudflare R2 is selected. It checks that the requested audio belongs to the
+current user before creating the URL. Keep the bucket private. Playback and
+download URL issuing is currently unavailable when MinIO is selected.
+
 The upload endpoint returns success only after both object upload and database
 metadata creation succeed. It streams request chunks through a bounded temporary
 file and enforces the same 50 MB limit as direct analysis. After storing the

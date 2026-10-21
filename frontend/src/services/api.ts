@@ -74,6 +74,11 @@ export interface AudioDetailResponse extends AudioLibraryItem {
   analysis: PersistedAnalysis | null;
 }
 
+export interface AudioAccessUrlResponse {
+  url: string;
+  expires_in: number;
+}
+
 export interface AnalysisResponse {
   filename: string;
   duration_seconds: number;
@@ -226,6 +231,16 @@ export const api = {
 
   getAudio(audioId: string): Promise<AudioDetailResponse> {
     return apiRequest<AudioDetailResponse>(`/audio/${encodeURIComponent(audioId)}`);
+  },
+
+  getAudioAccessUrl(
+    audioId: string,
+    disposition: "inline" | "attachment",
+  ): Promise<AudioAccessUrlResponse> {
+    const params = new URLSearchParams({ disposition });
+    return apiRequest<AudioAccessUrlResponse>(
+      `/audio/${encodeURIComponent(audioId)}/access-url?${params.toString()}`,
+    );
   },
 
   deleteAudio(audioId: string): Promise<void> {

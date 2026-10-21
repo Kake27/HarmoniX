@@ -58,3 +58,8 @@ class AudioDetailResponse(AudioLibraryItem):
     user_id: uuid.UUID
     parent_audio_id: uuid.UUID | None
     analysis: PersistedAnalysis | None
+
+
+class AudioAccessUrlResponse(BaseModel):
+    url: str
+    expires_in: int
