@@ -78,6 +78,21 @@ class ObjectStorageTests(unittest.TestCase):
             storage._parse_storage_url("s3://other-bucket/audio.wav")
 
     @patch("app.core.storage.boto3.client")
+    def test_reads_object_size_from_storage_metadata(self, client_factory) -> None:
+        s3_client = Mock()
+        s3_client.head_object.return_value = {"ContentLength": 1234}
+        client_factory.return_value = s3_client
+        storage = ObjectStorage(make_settings())
+
+        size = storage.get_object_size("s3://harmonix-audio/users/user/track.wav")
+
+        self.assertEqual(size, 1234)
+        s3_client.head_object.assert_called_once_with(
+            Bucket="harmonix-audio",
+            Key="users/user/track.wav",
+        )
+
+    @patch("app.core.storage.boto3.client")
     def test_generates_short_lived_url_with_requested_disposition(
         self, client_factory
     ) -> None:

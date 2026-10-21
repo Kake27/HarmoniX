@@ -94,6 +94,16 @@ class ObjectStorage:
             logger.exception("Object-store download failed")
             raise StorageError("Could not retrieve the stored audio.") from exc
 
+    def get_object_size(self, storage_url: str) -> int:
+        bucket, key = self._parse_storage_url(storage_url)
+        try:
+            return int(
+                self.client.head_object(Bucket=bucket, Key=key)["ContentLength"]
+            )
+        except (BotoCoreError, ClientError, KeyError, TypeError, ValueError) as exc:
+            logger.exception("Could not read object metadata")
+            raise StorageError("Could not retrieve the stored audio.") from exc
+
     def delete_object(self, storage_url: str) -> None:
         bucket, key = self._parse_storage_url(storage_url)
         try:

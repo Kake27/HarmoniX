@@ -86,6 +86,10 @@ export interface AnalysisResponse {
   results: Record<string, AnalyserResult>;
 }
 
+export interface AudioTransposeRequest {
+  semitones: number;
+}
+
 export interface BPMData {
   bpm: number;
   detected_beats: number;
@@ -210,6 +214,28 @@ async function apiFormRequest<T>(path: string, formData: FormData): Promise<T> {
   return (await response.json()) as T;
 }
 
+async function apiBlobRequest(
+  path: string,
+  body: AudioTransposeRequest,
+): Promise<Blob> {
+  const token = await getAccessToken();
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "audio/wav",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    throw new ApiError(await getErrorMessage(response), response.status);
+  }
+
+  return response.blob();
+}
+
 export const api = {
   getMyProfile(): Promise<UserProfile> {
     return apiRequest<UserProfile>("/users/me");
@@ -251,6 +277,16 @@ export const api = {
     const formData = new FormData();
     formData.append("audio_id", audioId);
     return apiFormRequest<AnalysisResponse>("/analyse", formData);
+  },
+
+  transposeAudio(
+    audioId: string,
+    semitones: number,
+  ): Promise<Blob> {
+    return apiBlobRequest(
+      `/audio/${encodeURIComponent(audioId)}/transpose`,
+      { semitones },
+    );
   },
 
   async analyseAudio(file: File): Promise<AnalysisResponse> {

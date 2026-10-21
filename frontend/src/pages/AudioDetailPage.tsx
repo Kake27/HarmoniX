@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { useAuth } from "../contexts/AuthContext";
@@ -15,11 +15,48 @@ function formatDate(value: string): string {
   return new Date(value).toLocaleString();
 }
 
+const PITCH_CLASSES = [
+  "C", "C#", "D", "D#", "E", "F",
+  "F#", "G", "G#", "A", "A#", "B",
+];
+const KEY_TO_PITCH_CLASS: Record<string, number> = {
+  C: 0,
+  "C#": 1,
+  Db: 1,
+  D: 2,
+  "D#": 3,
+  Eb: 3,
+  E: 4,
+  F: 5,
+  "F#": 6,
+  Gb: 6,
+  G: 7,
+  "G#": 8,
+  Ab: 8,
+  A: 9,
+  "A#": 10,
+  Bb: 10,
+  B: 11,
+};
+
+function getExpectedKey(
+  key: string | null,
+  mode: string | null,
+  semitones: number,
+): string | null {
+  if (!key || !(key in KEY_TO_PITCH_CLASS)) return null;
+  const shiftedIndex =
+    (KEY_TO_PITCH_CLASS[key] + semitones + PITCH_CLASSES.length) %
+    PITCH_CLASSES.length;
+  return `${PITCH_CLASSES[shiftedIndex]}${mode ? ` ${mode}` : ""}`;
+}
+
 export default function AudioDetailPage() {
   const { audioId } = useParams<{ audioId: string }>();
   const { user, signOut } = useAuth();
   const currentUserId = user?.id ?? null;
   const navigate = useNavigate();
+  const currentIdentityRef = useRef({ audioId, userId: currentUserId });
   const [audio, setAudio] = useState<AudioDetailResponse | null>(null);
   const [audioOwnerId, setAudioOwnerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -34,6 +71,39 @@ export default function AudioDetailPage() {
     error: string;
   }>({ audioId: "", url: "", error: "" });
   const [isDownloading, setIsDownloading] = useState(false);
+  const [semitones, setSemitones] = useState(0);
+  const [isTransposing, setIsTransposing] = useState(false);
+  const [transposeError, setTransposeError] = useState("");
+  const [transposedPreview, setTransposedPreview] = useState<{
+    audioId: string;
+    semitones: number;
+    url: string;
+  } | null>(null);
+  const transposedUrlRef = useRef<string | null>(null);
+  const isMountedRef = useRef(false);
+
+  const revokeTransposedPreview = useCallback(() => {
+    if (transposedUrlRef.current) {
+      URL.revokeObjectURL(transposedUrlRef.current);
+      transposedUrlRef.current = null;
+    }
+    setTransposedPreview(null);
+  }, []);
+
+  useEffect(() => {
+    currentIdentityRef.current = { audioId, userId: currentUserId };
+  }, [audioId, currentUserId]);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (transposedUrlRef.current) {
+        URL.revokeObjectURL(transposedUrlRef.current);
+        transposedUrlRef.current = null;
+      }
+    };
+  }, []);
 
   const loadAudio = useCallback(async (showLoading = true) => {
     if (!audioId) {
@@ -46,6 +116,9 @@ export default function AudioDetailPage() {
       setLoading(true);
       setError("");
       setAudio(null);
+      setSemitones(0);
+      setTransposeError("");
+      revokeTransposedPreview();
     }
     try {
       const result = await api.getAudio(audioId);
@@ -65,7 +138,7 @@ export default function AudioDetailPage() {
     } finally {
       if (showLoading) setLoading(false);
     }
-  }, [audioId, currentUserId, navigate, signOut]);
+  }, [audioId, currentUserId, navigate, revokeTransposedPreview, signOut]);
 
   useEffect(() => {
     void loadAudio();
@@ -79,6 +152,8 @@ export default function AudioDetailPage() {
   const playbackUrl = currentPlayback?.url ?? "";
   const playbackError = currentPlayback?.error ?? "";
   const isLoadingPlayback = Boolean(visibleAudio && !currentPlayback);
+  const visibleTransposedPreview =
+    transposedPreview?.audioId === visibleAudioId ? transposedPreview : null;
 
   const refreshPlaybackUrl = useCallback(async (targetAudioId: string) => {
     try {
@@ -127,6 +202,52 @@ export default function AudioDetailPage() {
     } finally {
       setIsAnalyzing(false);
     }
+  }
+
+  async function handleTranspose() {
+    if (!audioId || isTransposing) return;
+    setIsTransposing(true);
+    setTransposeError("");
+    try {
+      const blob = await api.transposeAudio(audioId, semitones);
+      const url = URL.createObjectURL(blob);
+      if (
+        !isMountedRef.current ||
+        currentIdentityRef.current.audioId !== audioId ||
+        currentIdentityRef.current.userId !== currentUserId
+      ) {
+        URL.revokeObjectURL(url);
+        return;
+      }
+      revokeTransposedPreview();
+      transposedUrlRef.current = url;
+      setTransposedPreview({ audioId, semitones, url });
+    } catch (requestError: unknown) {
+      if (requestError instanceof ApiError && requestError.status === 401) {
+        await signOut();
+        navigate("/login", { replace: true });
+        return;
+      }
+      setTransposeError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Could not transpose this audio.",
+      );
+    } finally {
+      if (isMountedRef.current) setIsTransposing(false);
+    }
+  }
+
+  function handleDownloadTransposed() {
+    if (!visibleTransposedPreview || !visibleAudio) return;
+    const link = document.createElement("a");
+    const baseFilename = visibleAudio.original_filename.replace(/\.[^.]+$/, "");
+    const shiftLabel = visibleTransposedPreview.semitones >= 0
+      ? `plus-${visibleTransposedPreview.semitones}`
+      : `minus-${Math.abs(visibleTransposedPreview.semitones)}`;
+    link.href = visibleTransposedPreview.url;
+    link.download = `${baseFilename}-transpose-${shiftLabel}.wav`;
+    link.click();
   }
 
   async function handleDelete() {
@@ -270,6 +391,96 @@ export default function AudioDetailPage() {
             >
               {isDownloading ? "Preparing download..." : "Download audio"}
             </button>
+          </section>
+
+          <section aria-labelledby="pitch-shift-heading">
+            <h2 id="pitch-shift-heading">Pitch shift</h2>
+            <p>
+              Selected shift: {semitones > 0 ? `+${semitones}` : semitones}{" "}
+              {Math.abs(semitones) === 1 ? "semitone" : "semitones"}
+              {semitones === 0 ? " (original pitch)" : ""}
+            </p>
+            {visibleAudio.analysis?.musical_key && (
+              <p>
+                Expected key:{" "}
+                {getExpectedKey(
+                  visibleAudio.analysis.musical_key,
+                  visibleAudio.analysis.mode,
+                  semitones,
+                ) ?? "Unavailable"}
+              </p>
+            )}
+            <div>
+              <button
+                type="button"
+                aria-label="Shift down one semitone"
+                onClick={() => setSemitones((value) => Math.max(-6, value - 1))}
+                disabled={semitones <= -6 || isTransposing}
+              >
+                −
+              </button>
+              <input
+                type="range"
+                min={-6}
+                max={6}
+                step={1}
+                value={semitones}
+                aria-label="Pitch shift in semitones"
+                onChange={(event) => setSemitones(Number(event.currentTarget.value))}
+                disabled={isTransposing}
+              />
+              <button
+                type="button"
+                aria-label="Shift up one semitone"
+                onClick={() => setSemitones((value) => Math.min(6, value + 1))}
+                disabled={semitones >= 6 || isTransposing}
+              >
+                +
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleTranspose()}
+              disabled={isTransposing || semitones === 0}
+            >
+              {isTransposing ? "Transposing..." : "Transpose"}
+            </button>
+            {transposeError && (
+              <div role="alert">
+                <p className="auth-error">{transposeError}</p>
+                <button
+                  type="button"
+                  onClick={() => void handleTranspose()}
+                  disabled={isTransposing}
+                >
+                  Retry transpose
+                </button>
+              </div>
+            )}
+            {visibleTransposedPreview && (
+              <div>
+                <h3>
+                  Transposed preview (
+                  {visibleTransposedPreview.semitones > 0
+                    ? `+${visibleTransposedPreview.semitones}`
+                    : visibleTransposedPreview.semitones} semitones)
+                </h3>
+                <audio
+                  controls
+                  preload="metadata"
+                  src={visibleTransposedPreview.url}
+                  aria-label="Play transposed preview"
+                >
+                  Your browser does not support audio playback.
+                </audio>
+                <button
+                  type="button"
+                  onClick={handleDownloadTransposed}
+                >
+                  Download transposed audio
+                </button>
+              </div>
+            )}
           </section>
 
           <section aria-labelledby="saved-analysis-heading">

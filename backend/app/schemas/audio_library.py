@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 AnalysisStatus = Literal[
@@ -63,3 +63,7 @@ class AudioDetailResponse(AudioLibraryItem):
 class AudioAccessUrlResponse(BaseModel):
     url: str
     expires_in: int
+
+
+class AudioTransposeRequest(BaseModel):
+    semitones: int = Field(strict=True, ge=-6, le=6)

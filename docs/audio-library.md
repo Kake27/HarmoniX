@@ -8,6 +8,7 @@ Supabase user, in newest-first order:
 - `GET /api/v1/audio/{audio_id}`
 - `GET /api/v1/audio/{audio_id}/access-url?disposition=inline`
 - `GET /api/v1/audio/{audio_id}/access-url?disposition=attachment`
+- `POST /api/v1/audio/{audio_id}/transpose`
 - `DELETE /api/v1/audio/{audio_id}`
 
 The detail endpoint returns the latest saved analysis and does not trigger
@@ -17,6 +18,12 @@ URL for playback (`inline`) or download (`attachment`) when R2 is configured.
 URL issuing is currently unavailable with MinIO. The frontend uses the private
 object store directly for media transfer; signed URLs are temporary and are
 not persisted in the database or browser storage.
+
+The transpose endpoint accepts `{"semitones": -6}` through
+`{"semitones": 6}`, downloads an owned original from R2, and streams a
+temporary WAV preview. It preserves the source sample rate and channels,
+rejects files larger than 50 MiB or longer than 10 minutes, and does not save
+the transformed audio to object storage or the database.
 Analysis requests for a stored audio file create a `PROCESSING` analysis record,
 then persist the complete analyzer result map and a terminal `COMPLETED`,
 `PARTIAL`, or `FAILED` status. The existing synchronous analyze endpoint and

@@ -1,14 +1,25 @@
 import logging
 import mimetypes
+import shutil
 import tempfile
 import uuid
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, AsyncIterator, Literal
 
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Response,
+    UploadFile,
+    status,
+)
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+from starlette.background import BackgroundTask
 from starlette.concurrency import run_in_threadpool
+from starlette.responses import StreamingResponse
 
 from app.api.deps import get_db
 from app.core.audio_metadata import extract_audio_metadata
@@ -23,6 +34,7 @@ from app.schemas.audio_library import (
     AudioDetailResponse,
     AudioLibraryItem,
     AudioLibraryResponse,
+    AudioTransposeRequest,
     PersistedAnalysis,
 )
 from app.schemas.audio_upload import AudioUploadResponse
@@ -34,6 +46,8 @@ MAX_LIBRARY_LIMIT = 100
 PRESIGNED_URL_TTL_SECONDS = 900
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+MAX_TRANSPOSE_DURATION_SECONDS = 10 * 60
+TRANSPOSE_RESPONSE_CHUNK_BYTES = 1024 * 1024
 ALLOWED_EXTENSIONS = {
     ".wav",
     ".mp3",
@@ -42,6 +56,106 @@ ALLOWED_EXTENSIONS = {
     ".m4a",
     ".aac",
 }
+
+
+class InvalidTranspositionAudio(ValueError):
+    pass
+
+
+def _samples_are_finite(samples, numpy_module) -> bool:
+    flattened = samples.reshape(-1)
+    chunk_size = 1_000_000
+    return all(
+        numpy_module.isfinite(flattened[start : start + chunk_size]).all()
+        for start in range(0, flattened.size, chunk_size)
+    )
+
+
+def _transpose_audio_file(
+    source_path: Path,
+    output_path: Path,
+    semitones: int,
+) -> None:
+    import librosa
+    import numpy as np
+    import soundfile
+
+    try:
+        waveform, sample_rate = librosa.load(
+            str(source_path),
+            sr=None,
+            mono=False,
+            dtype=np.float32,
+        )
+    except MemoryError:
+        raise
+    except Exception as exc:
+        raise InvalidTranspositionAudio(
+            "Could not decode this audio file."
+        ) from exc
+
+    if waveform.size == 0 or sample_rate <= 0:
+        raise InvalidTranspositionAudio("The audio file contains no audio.")
+
+    duration_seconds = waveform.shape[-1] / sample_rate
+    if duration_seconds > MAX_TRANSPOSE_DURATION_SECONDS:
+        raise InvalidTranspositionAudio(
+            "Audio duration exceeds the 10-minute transpose limit."
+        )
+    if not _samples_are_finite(waveform, np):
+        raise InvalidTranspositionAudio(
+            "The audio file contains invalid samples."
+        )
+
+    try:
+        shifted = librosa.effects.pitch_shift(
+            y=waveform,
+            sr=sample_rate,
+            n_steps=semitones,
+        )
+        if not _samples_are_finite(shifted, np):
+            raise InvalidTranspositionAudio(
+                "Pitch shifting produced invalid audio samples."
+            )
+
+        output_waveform = shifted.T if shifted.ndim > 1 else shifted
+        soundfile.write(
+            output_path,
+            output_waveform,
+            sample_rate,
+            format="WAV",
+            subtype="PCM_16",
+        )
+    except MemoryError:
+        raise
+    except InvalidTranspositionAudio:
+        raise
+    except Exception as exc:
+        raise RuntimeError("Could not transpose this audio file.") from exc
+
+
+def _cleanup_transpose_directory(directory: Path) -> None:
+    try:
+        shutil.rmtree(directory)
+    except FileNotFoundError:
+        pass
+    except OSError:
+        logger.exception("Could not remove temporary transpose directory")
+
+
+async def _stream_transposed_file(
+    path: Path,
+    cleanup_directory: Path,
+) -> AsyncIterator[bytes]:
+    try:
+        with path.open("rb") as audio_file:
+            while chunk := await run_in_threadpool(
+                audio_file.read,
+                TRANSPOSE_RESPONSE_CHUNK_BYTES,
+            ):
+                yield chunk
+    finally:
+        _cleanup_transpose_directory(cleanup_directory)
 
 
 def _library_item(
@@ -168,6 +282,170 @@ def list_audio(
         limit=limit,
         offset=offset,
     )
+
+
+@router.post(
+    "/{audio_id}/transpose",
+    summary="Temporarily transpose an owned audio file",
+)
+async def transpose_audio(
+    audio_id: uuid.UUID,
+    payload: AudioTransposeRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> StreamingResponse:
+    audio = (
+        db.query(AudioFileData)
+        .filter(
+            AudioFileData.id == audio_id,
+            AudioFileData.user_id == current_user.id,
+        )
+        .first()
+    )
+    if audio is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Audio file not found.",
+        )
+
+    if object_storage.provider != "r2":
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Audio transposition is currently available only with Cloudflare R2.",
+        )
+
+    audio_suffix = Path(audio.original_filename).suffix.lower()
+    if audio_suffix not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="This audio format is not supported for transposition.",
+        )
+    if audio.file_size_bytes > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail="Audio file exceeds the 50 MB transposition limit.",
+        )
+    if (
+        audio.duration is not None
+        and audio.duration > MAX_TRANSPOSE_DURATION_SECONDS
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail="Audio duration exceeds the 10-minute transpose limit.",
+        )
+
+    try:
+        object_size = await run_in_threadpool(
+            object_storage.get_object_size,
+            audio.storage_url,
+        )
+    except (StorageError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Could not retrieve the stored audio.",
+        ) from exc
+    if object_size > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail="Audio file exceeds the 50 MB transposition limit.",
+        )
+
+    try:
+        temporary_directory = Path(
+            tempfile.mkdtemp(prefix="harmonix-transpose-")
+        )
+    except OSError as exc:
+        logger.exception("Could not create temporary transpose directory")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not prepare this audio for transposition.",
+        ) from exc
+
+    source_path = temporary_directory / f"source{audio_suffix}"
+    output_path = temporary_directory / "transposed.wav"
+    response_handed_off = False
+
+    try:
+        try:
+            await run_in_threadpool(
+                object_storage.download_to_path,
+                audio.storage_url,
+                source_path,
+            )
+        except (StorageError, ValueError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Could not retrieve the stored audio.",
+            ) from exc
+
+        if source_path.stat().st_size > MAX_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail="Audio file exceeds the 50 MB transposition limit.",
+            )
+
+        metadata = await run_in_threadpool(
+            extract_audio_metadata,
+            source_path,
+        )
+        if (
+            metadata.duration is not None
+            and metadata.duration > MAX_TRANSPOSE_DURATION_SECONDS
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail="Audio duration exceeds the 10-minute transpose limit.",
+            )
+
+        try:
+            await run_in_threadpool(
+                _transpose_audio_file,
+                source_path,
+                output_path,
+                payload.semitones,
+            )
+        except InvalidTranspositionAudio as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(exc),
+            ) from exc
+        except MemoryError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail="Audio requires more memory than is available for transposition.",
+            ) from exc
+        except Exception as exc:
+            logger.exception("Audio transposition failed for %s", audio_id)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Could not transpose this audio file.",
+            ) from exc
+
+        response = StreamingResponse(
+            _stream_transposed_file(output_path, temporary_directory),
+            media_type="audio/wav",
+            headers={
+                "Content-Disposition": 'inline; filename="transposed.wav"',
+                "Cache-Control": "no-store",
+            },
+            background=BackgroundTask(
+                _cleanup_transpose_directory,
+                temporary_directory,
+            ),
+        )
+        response_handed_off = True
+        return response
+    except HTTPException:
+        raise
+    except OSError as exc:
+        logger.exception("Could not access temporary audio for transpose")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not prepare this audio for transposition.",
+        ) from exc
+    finally:
+        if not response_handed_off:
+            _cleanup_transpose_directory(temporary_directory)
 
 
 @router.get(
