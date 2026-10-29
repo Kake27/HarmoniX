@@ -15,6 +15,11 @@ function formatDate(value: string): string {
   return new Date(value).toLocaleString();
 }
 
+const PLAYBACK_RATE_MIN = 0.25;
+const PLAYBACK_RATE_MAX = 2;
+const PLAYBACK_RATE_STEP = 0.05;
+const PLAYBACK_RATE_OPTIONS = [0.75, 0.9, 1, 1.1, 1.25, 1.5, 2];
+
 const PITCH_CLASSES = [
   "C", "C#", "D", "D#", "E", "F",
   "F#", "G", "G#", "A", "A#", "B",
@@ -51,6 +56,16 @@ function getExpectedKey(
   return `${PITCH_CLASSES[shiftedIndex]}${mode ? ` ${mode}` : ""}`;
 }
 
+function formatPlaybackRate(value: number): string {
+  return `${Number(value.toFixed(2)).toString()}×`;
+}
+
+type AudioWithPitchPreservation = HTMLAudioElement & {
+  preservesPitch?: boolean;
+  mozPreservesPitch?: boolean;
+  webkitPreservesPitch?: boolean;
+};
+
 export default function AudioDetailPage() {
   const { audioId } = useParams<{ audioId: string }>();
   const { user, signOut } = useAuth();
@@ -70,6 +85,7 @@ export default function AudioDetailPage() {
     url: string;
     error: string;
   }>({ audioId: "", url: "", error: "" });
+  const [playbackRate, setPlaybackRate] = useState(1);
   const [isDownloading, setIsDownloading] = useState(false);
   const [semitones, setSemitones] = useState(0);
   const [isTransposing, setIsTransposing] = useState(false);
@@ -80,7 +96,27 @@ export default function AudioDetailPage() {
     url: string;
   } | null>(null);
   const transposedUrlRef = useRef<string | null>(null);
+  const originalAudioRef = useRef<HTMLAudioElement | null>(null);
+  const transposedAudioRef = useRef<HTMLAudioElement | null>(null);
   const isMountedRef = useRef(false);
+
+  const applyPlaybackRate = useCallback((audioElement: HTMLAudioElement | null) => {
+    if (!audioElement) return;
+
+    audioElement.playbackRate = playbackRate;
+    audioElement.defaultPlaybackRate = playbackRate;
+
+    const audioWithPitchPreservation = audioElement as AudioWithPitchPreservation;
+    if (typeof audioWithPitchPreservation.preservesPitch === "boolean") {
+      audioWithPitchPreservation.preservesPitch = true;
+    }
+    if (typeof audioWithPitchPreservation.mozPreservesPitch === "boolean") {
+      audioWithPitchPreservation.mozPreservesPitch = true;
+    }
+    if (typeof audioWithPitchPreservation.webkitPreservesPitch === "boolean") {
+      audioWithPitchPreservation.webkitPreservesPitch = true;
+    }
+  }, [playbackRate]);
 
   const revokeTransposedPreview = useCallback(() => {
     if (transposedUrlRef.current) {
@@ -154,6 +190,11 @@ export default function AudioDetailPage() {
   const isLoadingPlayback = Boolean(visibleAudio && !currentPlayback);
   const visibleTransposedPreview =
     transposedPreview?.audioId === visibleAudioId ? transposedPreview : null;
+
+  useEffect(() => {
+    applyPlaybackRate(originalAudioRef.current);
+    applyPlaybackRate(transposedAudioRef.current);
+  }, [applyPlaybackRate, playbackUrl, visibleTransposedPreview?.url]);
 
   const refreshPlaybackUrl = useCallback(async (targetAudioId: string) => {
     try {
@@ -359,6 +400,7 @@ export default function AudioDetailPage() {
             {isLoadingPlayback && <p role="status">Preparing audio...</p>}
             {playbackUrl && (
               <audio
+                ref={originalAudioRef}
                 controls
                 preload="metadata"
                 src={playbackUrl}
@@ -372,6 +414,45 @@ export default function AudioDetailPage() {
                 Your browser does not support audio playback.
               </audio>
             )}
+            <div aria-label="Playback speed controls">
+              <label htmlFor="playback-rate-slider">Playback speed</label>
+              <div>
+                <span aria-live="polite">{formatPlaybackRate(playbackRate)}</span>
+                <button
+                  type="button"
+                  onClick={() => setPlaybackRate(1)}
+                  aria-label="Reset playback speed to default"
+                >
+                  Reset
+                </button>
+              </div>
+              <input
+                id="playback-rate-slider"
+                type="range"
+                min={PLAYBACK_RATE_MIN}
+                max={PLAYBACK_RATE_MAX}
+                step={PLAYBACK_RATE_STEP}
+                value={playbackRate}
+                aria-label="Playback speed in multiples of normal speed"
+                onChange={(event) => {
+                  const nextRate = Number(event.currentTarget.value);
+                  setPlaybackRate(nextRate);
+                }}
+              />
+              <div role="group" aria-label="Quick playback speed options">
+                {PLAYBACK_RATE_OPTIONS.map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    aria-label={`Set playback speed to ${formatPlaybackRate(option)}`}
+                    aria-pressed={Math.abs(playbackRate - option) < 0.001}
+                    onClick={() => setPlaybackRate(option)}
+                  >
+                    {formatPlaybackRate(option)}
+                  </button>
+                ))}
+              </div>
+            </div>
             {playbackError && (
               <div role="alert">
                 <p className="auth-error">{playbackError}</p>
@@ -466,6 +547,7 @@ export default function AudioDetailPage() {
                     : visibleTransposedPreview.semitones} semitones)
                 </h3>
                 <audio
+                  ref={transposedAudioRef}
                   controls
                   preload="metadata"
                   src={visibleTransposedPreview.url}
