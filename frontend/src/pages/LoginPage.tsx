@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
+import { AuthLayout } from "../components/auth/AuthLayout";
+import { PasswordInput } from "../components/auth/PasswordInput";
 import { supabase } from "../lib/supabase";
 
 export default function LoginPage() {
@@ -40,49 +42,65 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="auth-container">
-      <section className="auth-card">
-        <h1>Welcome back</h1>
-        <p>Log in to continue to Harmonix.</p>
+    <AuthLayout
+      mirrored
+      introTitle={
+        <>
+          Pick up where
+          <br />
+          your sound left off.
+        </>
+      }
+      introCopy="Your library, your discoveries, your next idea. All right where you left them."
+      showcaseTitle="Midnight drive"
+    >
+      <section className="auth-panel">
+        <p className="auth-eyebrow">Back in harmony</p>
+        <h1 className="auth-title">Welcome back.</h1>
+        <p className="auth-subtitle">Log in to explore your sound again.</p>
 
-        <form onSubmit={handleSubmit} className="auth-form">
-          <label htmlFor="email">Email</label>
-          <input
-            id="email"
-            type="email"
-            autoComplete="email"
-            placeholder="you@example.com"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            required
-          />
+        <form onSubmit={handleSubmit} className="auth-fields">
+          <div className="auth-field">
+            <label className="auth-label" htmlFor="email">Email</label>
+            <input
+              className="auth-input"
+              id="email"
+              type="email"
+              autoComplete="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              required
+            />
+          </div>
 
-          <label htmlFor="password">Password</label>
-          <input
-            id="password"
-            type="password"
-            autoComplete="current-password"
-            placeholder="Your password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            required
-          />
+          <div className="auth-field">
+            <label className="auth-label" htmlFor="password">Password</label>
+            <PasswordInput
+              id="password"
+              autoComplete="current-password"
+              placeholder="Enter your password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+            />
+          </div>
 
           {error && (
-            <p className="auth-error" role="alert">
+            <p className="auth-message auth-message--error" role="alert">
               {error}
             </p>
           )}
 
-          <button type="submit" disabled={loading}>
-            {loading ? "Signing in..." : "Sign in"}
+          <button type="submit" className="auth-submit" disabled={loading}>
+            {loading ? "Logging in..." : "Log in"}
           </button>
         </form>
 
-        <p className="auth-footer">
-          Don't have an account? <Link to="/signup">Sign up</Link>
+        <p className="auth-switch">
+          New to Harmonix? <Link to="/signup">Sign up</Link>
         </p>
       </section>
-    </main>
+    </AuthLayout>
   );
 }

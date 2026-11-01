@@ -10,14 +10,18 @@ const WAVEFORM_BARS = Array.from({ length: BAR_COUNT }, (_, index) => {
   return 0.18 + wave * 0.82;
 });
 
-export function SoundShowcase() {
+type SoundShowcaseProps = {
+  title: string;
+};
+
+export function SoundShowcase({ title }: SoundShowcaseProps) {
   const playedBars = Math.round(PLAYHEAD_POSITION * BAR_COUNT);
 
   return (
     <div className="sound-showcase">
       <div className="sound-showcase-top">
         <div>
-          <h3 className="sound-showcase-title">Shantabai</h3>
+          <h3 className="sound-showcase-title">{title}</h3>
           <p className="sound-showcase-meta">WAV / 48 kHz / 24-bit / STEREO</p>
         </div>
         <span className="sound-showcase-badge">
