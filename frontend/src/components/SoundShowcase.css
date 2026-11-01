@@ -1,0 +1,177 @@
+.sound-showcase {
+  background: #0f1418;
+  border: 1px solid #232b33;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 24px 48px rgb(0 0 0 / 35%);
+}
+
+.sound-showcase-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 24px 24px 20px;
+}
+
+.sound-showcase-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 500;
+  color: #eef3f5;
+}
+
+.sound-showcase-meta {
+  margin: 8px 0 0;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: #8a949c;
+}
+
+.sound-showcase-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8ef3cd;
+  white-space: nowrap;
+}
+
+.sound-showcase-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #8ef3cd;
+  box-shadow: 0 0 8px rgb(142 243 205 / 70%);
+}
+
+.sound-showcase-wave {
+  position: relative;
+  height: 128px;
+  padding: 0 24px;
+}
+
+.sound-showcase-bars {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 100%;
+}
+
+.sound-showcase-bar {
+  flex: 1 1 0;
+  min-width: 0;
+  border-radius: 2px;
+  background: #3a464f;
+  transform-origin: center;
+  animation: sound-bar-in 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation-delay: calc(var(--bar-index) * 12ms);
+}
+
+.sound-showcase-bar.is-played {
+  background: #8ef3cd;
+}
+
+.sound-showcase-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: #8ef3cd;
+}
+
+.sound-showcase-playhead::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #8ef3cd;
+}
+
+.sound-showcase-times {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 24px 20px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+  color: #8ef3cd;
+}
+
+.sound-showcase-times span:last-child {
+  color: #8a949c;
+}
+
+.sound-showcase-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 0;
+  padding: 20px 24px 24px;
+  background: #0c1115;
+  border-top: 1px solid #232b33;
+}
+
+.sound-showcase-stats dt {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8a949c;
+}
+
+.sound-showcase-stats dd {
+  margin: 8px 0 0;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 24px;
+  color: #eef3f5;
+  white-space: nowrap;
+}
+
+.sound-showcase-stats small {
+  font-size: 11px;
+  color: #8a949c;
+}
+
+@keyframes sound-bar-in {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+@media (max-width: 640px) {
+  .sound-showcase-wave {
+    padding: 0 16px;
+  }
+
+  .sound-showcase-top,
+  .sound-showcase-times {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .sound-showcase-stats {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .sound-showcase-stats dd {
+    font-size: 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sound-showcase-bar {
+    animation: none;
+  }
+}
