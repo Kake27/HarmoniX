@@ -1,8 +1,6 @@
 .env
 __pycache__/
 .venv
-Harmonix_AI_Agent_Handoff.md
-design.png
 
 # Logs
 logs
