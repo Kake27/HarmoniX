@@ -1,6 +1,16 @@
 import { useState, type FormEvent } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
+import { AuthLayout } from "../components/auth/AuthLayout";
+import {
+  AuthField,
+  AuthInput,
+  AuthMessage,
+  AuthPanelHeading,
+  AuthSubmit,
+  AuthSwitch,
+} from "../components/auth/AuthFormControls";
+import { PasswordInput } from "../components/auth/PasswordInput";
 import { supabase } from "../lib/supabase";
 
 export default function LoginPage() {
@@ -40,14 +50,26 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="auth-container">
-      <section className="auth-card">
-        <h1>Welcome back</h1>
-        <p>Log in to continue to Harmonix.</p>
+    <AuthLayout
+      introTitle={
+        <>
+          Pick up where
+          <br />
+          your sound left off.
+        </>
+      }
+      introCopy="Your library, your discoveries, your next idea. All right where you left them."
+      showcaseTitle="Midnight drive"
+    >
+      <AuthPanelHeading
+        eyebrow="Back in harmony"
+        title="Welcome back."
+        subtitle="Log in to explore your sound again."
+      />
 
-        <form onSubmit={handleSubmit} className="auth-form">
-          <label htmlFor="email">Email</label>
-          <input
+      <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+        <AuthField label="Email" htmlFor="email">
+          <AuthInput
             id="email"
             type="email"
             autoComplete="email"
@@ -56,33 +78,31 @@ export default function LoginPage() {
             onChange={(event) => setEmail(event.target.value)}
             required
           />
+        </AuthField>
 
-          <label htmlFor="password">Password</label>
-          <input
+        <AuthField label="Password" htmlFor="password">
+          <PasswordInput
             id="password"
-            type="password"
             autoComplete="current-password"
-            placeholder="Your password"
+            placeholder="Enter your password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             required
           />
+        </AuthField>
 
-          {error && (
-            <p className="auth-error" role="alert">
-              {error}
-            </p>
-          )}
+        {error && (
+          <AuthMessage tone="error" role="alert">
+            {error}
+          </AuthMessage>
+        )}
 
-          <button type="submit" disabled={loading}>
-            {loading ? "Signing in..." : "Sign in"}
-          </button>
-        </form>
+        <AuthSubmit disabled={loading}>
+          {loading ? "Logging in..." : "Log in"}
+        </AuthSubmit>
+      </form>
 
-        <p className="auth-footer">
-          Don't have an account? <Link to="/signup">Sign up</Link>
-        </p>
-      </section>
-    </main>
+      <AuthSwitch prompt="New to Harmonix?" to="/signup" label="Sign up" />
+    </AuthLayout>
   );
 }

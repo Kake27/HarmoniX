@@ -1,6 +1,16 @@
 import { useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
+import { AuthLayout } from "../components/auth/AuthLayout";
+import {
+  AuthField,
+  AuthInput,
+  AuthMessage,
+  AuthPanelHeading,
+  AuthSubmit,
+  AuthSwitch,
+} from "../components/auth/AuthFormControls";
+import { PasswordInput } from "../components/auth/PasswordInput";
 import { supabase } from "../lib/supabase";
 
 export default function SignupPage() {
@@ -54,7 +64,6 @@ export default function SignupPage() {
         // an active session immediately.
         navigate("/", { replace: true });
       } else {
-        // Common when email confirmation is enabled.
         setMessage(
           "Account created! Check your email to confirm your account, then sign in.",
         );
@@ -67,14 +76,26 @@ export default function SignupPage() {
   }
 
   return (
-    <main className="auth-container">
-      <section className="auth-card">
-        <h1>Create your account</h1>
-        <p>Get started with Harmonix.</p>
+    <AuthLayout
+      introTitle={
+        <>
+          Every sound
+          <br />
+          has a story.
+        </>
+      }
+      introCopy="Find what’s inside yours. Explore tempo, key, and the details that make your audio."
+      showcaseTitle="Shantabai"
+    >
+      <AuthPanelHeading
+        eyebrow="Get in Harmony"
+        title="Create your account."
+        subtitle="A space for your sound. A new way to hear it."
+      />
 
-        <form onSubmit={handleSubmit} className="auth-form">
-          <label htmlFor="name">Full name</label>
-          <input
+      <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+        <AuthField label="Name" htmlFor="name">
+          <AuthInput
             id="name"
             type="text"
             autoComplete="name"
@@ -84,9 +105,10 @@ export default function SignupPage() {
             maxLength={100}
             required
           />
+        </AuthField>
 
-          <label htmlFor="email">Email</label>
-          <input
+        <AuthField label="Email" htmlFor="email">
+          <AuthInput
             id="email"
             type="email"
             autoComplete="email"
@@ -95,21 +117,22 @@ export default function SignupPage() {
             onChange={(event) => setEmail(event.target.value)}
             required
           />
+        </AuthField>
 
-          <label htmlFor="password">Password</label>
-          <input
+        <AuthField label="Password" htmlFor="password" hint="Use at least 8 characters.">
+          <PasswordInput
             id="password"
-            type="password"
             autoComplete="new-password"
-            placeholder="At least 8 characters"
+            placeholder="Create a password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             minLength={8}
             required
           />
+        </AuthField>
 
-          <label htmlFor="confirm-password">Confirm password</label>
-          <input
+        <AuthField label="Confirm password" htmlFor="confirm-password">
+          <AuthInput
             id="confirm-password"
             type="password"
             autoComplete="new-password"
@@ -119,28 +142,32 @@ export default function SignupPage() {
             minLength={8}
             required
           />
+        </AuthField>
 
-          {error && (
-            <p className="auth-error" role="alert">
-              {error}
-            </p>
-          )}
+        {error && (
+          <AuthMessage tone="error" role="alert">
+            {error}
+          </AuthMessage>
+        )}
 
-          {message && (
-            <p className="auth-success" role="status">
-              {message}
-            </p>
-          )}
+        {message && (
+          <AuthMessage tone="success" role="status">
+            {message}
+          </AuthMessage>
+        )}
 
-          <button type="submit" disabled={loading}>
-            {loading ? "Creating account..." : "Create account"}
-          </button>
-        </form>
+        <AuthSubmit disabled={loading}>
+          {loading ? "Creating account..." : "Sign up"}
+        </AuthSubmit>
+      </form>
 
-        <p className="auth-footer">
-          Already have an account? <Link to="/login">Sign in</Link>
-        </p>
-      </section>
-    </main>
+      <p className="m-0 mt-6 text-center text-[13px] leading-[1.6] text-muted">
+        By signing up, you agree to our{" "}
+        <a href=""><span className="text-ink underline underline-offset-[3px]">Terms of Service</span></a> and{" "}
+        <a href=""><span className="text-ink underline underline-offset-[3px]">Privacy Policy</span></a>.
+      </p>
+
+      <AuthSwitch prompt="Already have an account?" to="/login" label="Log in" />
+    </AuthLayout>
   );
 }
