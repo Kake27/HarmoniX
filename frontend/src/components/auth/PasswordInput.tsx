@@ -1,19 +1,21 @@
 import { useState, type ComponentProps } from "react";
 
+import { AuthInput } from "./AuthFormControls";
+
 type PasswordInputProps = Omit<ComponentProps<"input">, "type">;
 
 export function PasswordInput(props: PasswordInputProps) {
   const [visible, setVisible] = useState(false);
 
   return (
-    <div className="auth-password">
-      <input {...props} type={visible ? "text" : "password"} className="auth-input" />
+    <div className="relative">
+      <AuthInput {...props} type={visible ? "text" : "password"} className="pr-[52px]" />
       <button
         type="button"
-        className="auth-password-toggle"
         onClick={() => setVisible((current) => !current)}
         aria-label={visible ? "Hide password" : "Show password"}
         aria-pressed={visible}
+        className="absolute top-1/2 right-2 flex size-9 -translate-y-1/2 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent p-0 text-muted transition-colors duration-200 hover:bg-white/[0.06] hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none"
       >
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path

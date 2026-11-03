@@ -1,7 +1,15 @@
 import { useState, type FormEvent } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { AuthLayout } from "../components/auth/AuthLayout";
+import {
+  AuthField,
+  AuthInput,
+  AuthMessage,
+  AuthPanelHeading,
+  AuthSubmit,
+  AuthSwitch,
+} from "../components/auth/AuthFormControls";
 import { PasswordInput } from "../components/auth/PasswordInput";
 import { supabase } from "../lib/supabase";
 
@@ -54,53 +62,48 @@ export default function LoginPage() {
       introCopy="Your library, your discoveries, your next idea. All right where you left them."
       showcaseTitle="Midnight drive"
     >
-      <section className="auth-panel">
-        <p className="auth-eyebrow">Back in harmony</p>
-        <h1 className="auth-title">Welcome back.</h1>
-        <p className="auth-subtitle">Log in to explore your sound again.</p>
+      <AuthPanelHeading
+        eyebrow="Back in harmony"
+        title="Welcome back."
+        subtitle="Log in to explore your sound again."
+      />
 
-        <form onSubmit={handleSubmit} className="auth-fields">
-          <div className="auth-field">
-            <label className="auth-label" htmlFor="email">Email</label>
-            <input
-              className="auth-input"
-              id="email"
-              type="email"
-              autoComplete="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              required
-            />
-          </div>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+        <AuthField label="Email" htmlFor="email">
+          <AuthInput
+            id="email"
+            type="email"
+            autoComplete="email"
+            placeholder="you@example.com"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            required
+          />
+        </AuthField>
 
-          <div className="auth-field">
-            <label className="auth-label" htmlFor="password">Password</label>
-            <PasswordInput
-              id="password"
-              autoComplete="current-password"
-              placeholder="Enter your password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              required
-            />
-          </div>
+        <AuthField label="Password" htmlFor="password">
+          <PasswordInput
+            id="password"
+            autoComplete="current-password"
+            placeholder="Enter your password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            required
+          />
+        </AuthField>
 
-          {error && (
-            <p className="auth-message auth-message--error" role="alert">
-              {error}
-            </p>
-          )}
+        {error && (
+          <AuthMessage tone="error" role="alert">
+            {error}
+          </AuthMessage>
+        )}
 
-          <button type="submit" className="auth-submit" disabled={loading}>
-            {loading ? "Logging in..." : "Log in"}
-          </button>
-        </form>
+        <AuthSubmit disabled={loading}>
+          {loading ? "Logging in..." : "Log in"}
+        </AuthSubmit>
+      </form>
 
-        <p className="auth-switch">
-          New to Harmonix? <Link to="/signup">Sign up</Link>
-        </p>
-      </section>
+      <AuthSwitch prompt="New to Harmonix?" to="/signup" label="Sign up" />
     </AuthLayout>
   );
 }

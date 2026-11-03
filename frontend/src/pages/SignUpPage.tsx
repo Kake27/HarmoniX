@@ -1,7 +1,15 @@
 import { useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 import { AuthLayout } from "../components/auth/AuthLayout";
+import {
+  AuthField,
+  AuthInput,
+  AuthMessage,
+  AuthPanelHeading,
+  AuthSubmit,
+  AuthSwitch,
+} from "../components/auth/AuthFormControls";
 import { PasswordInput } from "../components/auth/PasswordInput";
 import { supabase } from "../lib/supabase";
 
@@ -80,96 +88,87 @@ export default function SignupPage() {
       introCopy="Find what’s inside yours. Explore tempo, key, and the details that make your audio."
       showcaseTitle="Shantabai"
     >
-      <section className="auth-panel">
-        <p className="auth-eyebrow">Get in Harmonix</p>
-        <h1 className="auth-title">Create your account.</h1>
-        <p className="auth-subtitle">A space for your sound. A new way to hear it.</p>
+      <AuthPanelHeading
+        eyebrow="Get in Harmonix"
+        title="Create your account."
+        subtitle="A space for your sound. A new way to hear it."
+      />
 
-        <form onSubmit={handleSubmit} className="auth-fields">
-          <div className="auth-field">
-            <label className="auth-label" htmlFor="name">Name</label>
-            <input
-              className="auth-input"
-              id="name"
-              type="text"
-              autoComplete="name"
-              placeholder="Your name"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              maxLength={100}
-              required
-            />
-          </div>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+        <AuthField label="Name" htmlFor="name">
+          <AuthInput
+            id="name"
+            type="text"
+            autoComplete="name"
+            placeholder="Your name"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            maxLength={100}
+            required
+          />
+        </AuthField>
 
-          <div className="auth-field">
-            <label className="auth-label" htmlFor="email">Email</label>
-            <input
-              className="auth-input"
-              id="email"
-              type="email"
-              autoComplete="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              required
-            />
-          </div>
+        <AuthField label="Email" htmlFor="email">
+          <AuthInput
+            id="email"
+            type="email"
+            autoComplete="email"
+            placeholder="you@example.com"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            required
+          />
+        </AuthField>
 
-          <div className="auth-field">
-            <label className="auth-label" htmlFor="password">Password</label>
-            <PasswordInput
-              id="password"
-              autoComplete="new-password"
-              placeholder="Create a password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              minLength={8}
-              required
-            />
-            <p className="auth-hint">Use at least 8 characters.</p>
-          </div>
+        <AuthField label="Password" htmlFor="password" hint="Use at least 8 characters.">
+          <PasswordInput
+            id="password"
+            autoComplete="new-password"
+            placeholder="Create a password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            minLength={8}
+            required
+          />
+        </AuthField>
 
-          <div className="auth-field">
-            <label className="auth-label" htmlFor="confirm-password">Confirm password</label>
-            <input
-              className="auth-input"
-              id="confirm-password"
-              type="password"
-              autoComplete="new-password"
-              placeholder="Enter your password again"
-              value={confirmPassword}
-              onChange={(event) => setConfirmPassword(event.target.value)}
-              minLength={8}
-              required
-            />
-          </div>
+        <AuthField label="Confirm password" htmlFor="confirm-password">
+          <AuthInput
+            id="confirm-password"
+            type="password"
+            autoComplete="new-password"
+            placeholder="Enter your password again"
+            value={confirmPassword}
+            onChange={(event) => setConfirmPassword(event.target.value)}
+            minLength={8}
+            required
+          />
+        </AuthField>
 
-          {error && (
-            <p className="auth-message auth-message--error" role="alert">
-              {error}
-            </p>
-          )}
+        {error && (
+          <AuthMessage tone="error" role="alert">
+            {error}
+          </AuthMessage>
+        )}
 
-          {message && (
-            <p className="auth-message auth-message--success" role="status">
-              {message}
-            </p>
-          )}
+        {message && (
+          <AuthMessage tone="success" role="status">
+            {message}
+          </AuthMessage>
+        )}
 
-          <button type="submit" className="auth-submit" disabled={loading}>
-            {loading ? "Creating account..." : "Sign up"}
-          </button>
-        </form>
+        <AuthSubmit disabled={loading}>
+          {loading ? "Creating account..." : "Sign up"}
+        </AuthSubmit>
+      </form>
 
-        <p className="auth-legal">
-          By signing up, you agree to our <span className="auth-legal-link">Terms of Service</span>{" "}
-          and <span className="auth-legal-link">Privacy Policy</span>.
-        </p>
+      <p className="m-0 mt-6 text-center text-[13px] leading-[1.6] text-muted">
+        By signing up, you agree to our{" "}
+        <span className="text-ink underline underline-offset-[3px]">Terms of Service</span> and{" "}
+        <span className="text-ink underline underline-offset-[3px]">Privacy Policy</span>.
+      </p>
 
-        <p className="auth-switch">
-          Already have an account? <Link to="/login">Log in</Link>
-        </p>
-      </section>
+      <AuthSwitch prompt="Already have an account?" to="/login" label="Log in" />
     </AuthLayout>
   );
 }
