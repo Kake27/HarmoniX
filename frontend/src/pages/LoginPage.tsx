@@ -79,7 +79,7 @@ export default function LoginPage() {
             required
           />
         </AuthField>
-
+        
         <AuthField label="Password" htmlFor="password">
           <PasswordInput
             id="password"
@@ -90,6 +90,7 @@ export default function LoginPage() {
             required
           />
         </AuthField>
+
 
         {error && (
           <AuthMessage tone="error" role="alert">
@@ -106,3 +107,4 @@ export default function LoginPage() {
     </AuthLayout>
   );
 }
+

@@ -119,6 +119,7 @@ export default function SignupPage() {
           />
         </AuthField>
 
+
         <AuthField label="Password" htmlFor="password" hint="Use at least 8 characters.">
           <PasswordInput
             id="password"
@@ -130,6 +131,7 @@ export default function SignupPage() {
             required
           />
         </AuthField>
+
 
         <AuthField label="Confirm password" htmlFor="confirm-password">
           <AuthInput
@@ -150,6 +152,7 @@ export default function SignupPage() {
           </AuthMessage>
         )}
 
+
         {message && (
           <AuthMessage tone="success" role="status">
             {message}
@@ -161,6 +164,7 @@ export default function SignupPage() {
         </AuthSubmit>
       </form>
 
+
       <p className="m-0 mt-6 text-center text-[13px] leading-[1.6] text-muted">
         By signing up, you agree to our{" "}
         <a href=""><span className="text-ink underline underline-offset-[3px]">Terms of Service</span></a> and{" "}
@@ -171,3 +175,4 @@ export default function SignupPage() {
     </AuthLayout>
   );
 }
+

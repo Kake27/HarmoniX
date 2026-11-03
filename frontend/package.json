@@ -19,6 +19,7 @@
     "tailwindcss": "^4.3.4"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.3.4",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",
@@ -28,6 +29,7 @@
     "@vitejs/plugin-react": "^6.1.1",
     "jsdom": "^26.1.0",
     "oxlint": "^1.81.0",
+    "tailwindcss": "^4.3.4",
     "typescript": "~6.0.2",
     "vite": "^8.3.0",
     "vitest": "^3.2.4"
