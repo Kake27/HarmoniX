@@ -1,6 +1,11 @@
 import { useRef, useState, useCallback, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+import { Upload } from "lucide-react";
 
+import { AudioUploadModal } from "../components/home/AudioUploadModal";
+import { HomeHeader, type HomeTab } from "../components/home/HomeHeader";
+import { LibrarySection } from "../components/home/LibrarySection";
+import { ProfilePanel } from "../components/home/ProfilePanel";
 import { useAuth } from "../contexts/AuthContext";
 import {
   api,
@@ -17,17 +22,6 @@ import type {
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
 const ALLOWED_EXTENSIONS = [".wav", ".mp3", ".flac", ".ogg", ".m4a", ".aac"];
-
-function formatDuration(seconds: number): string {
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = Math.floor(seconds % 60);
-  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-}
 
 function getBPMData(result: AnalysisResponse): BPMData | null {
   const analyzer = result.results.bpm;
@@ -47,14 +41,36 @@ function getKeyData(result: AnalysisResponse): MusicalKeyData | null {
   return data as unknown as MusicalKeyData;
 }
 
+function getGreeting(date: Date): string {
+  const hour = date.getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+}
+
+function getInitials(source: string): string {
+  const initials = source
+    .trim()
+    .split(/[\s@.]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("");
+  return initials || "?";
+}
+
 export default function HomePage() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+
+  const [activeTab, setActiveTab] = useState<HomeTab>("library");
+  const [librarySearch, setLibrarySearch] = useState("");
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [profileError, setProfileError] = useState("");
   const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState("");
 
   const [library, setLibrary] = useState<AudioLibraryItem[]>([]);
   const [libraryOwnerId, setLibraryOwnerId] = useState<string | null>(null);
@@ -62,6 +78,7 @@ export default function HomePage() {
   const [loadingLibrary, setLoadingLibrary] = useState(true);
   const [libraryError, setLibraryError] = useState("");
 
+  const [uploadOpen, setUploadOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedFileOwnerId, setSelectedFileOwnerId] = useState<string | null>(null);
@@ -146,11 +163,12 @@ export default function HomePage() {
 
   async function handleSignOut() {
     setSigningOut(true);
+    setSignOutError("");
     try {
       await signOut();
       navigate("/login", { replace: true });
     } catch {
-      setProfileError("Could not sign out. Please try again.");
+      setSignOutError("Could not sign out. Please try again.");
     } finally {
       setSigningOut(false);
     }
@@ -268,212 +286,114 @@ export default function HomePage() {
   const musicalKey = visibleAnalysis ? getKeyData(visibleAnalysis) : null;
   const visibleLibrary = libraryOwnerId === user?.id ? library : [];
 
+  const displayName = profile?.name || profile?.email || user?.email || "Account";
+  const displayEmail = profile?.email ?? user?.email ?? "";
+  const initials = getInitials(displayName);
+  const firstName = profile?.name?.split(" ")[0];
+  const greeting = getGreeting(new Date());
+
   return (
-    <main className="home-container">
-      <header>
-        <h1>Welcome to Harmonix</h1>
-        <p>You're signed in through Supabase Auth.</p>
-      </header>
+    <div className="flex min-h-screen flex-col bg-canvas font-sans leading-[1.5] text-ink">
+      <HomeHeader
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        name={displayName}
+        email={displayEmail}
+        initials={initials}
+        signingOut={signingOut}
+        onSignOut={() => void handleSignOut()}
+      />
 
-      <section aria-labelledby="profile-heading">
-        <h2 id="profile-heading">Backend profile</h2>
-        {loadingProfile && <p>Loading your profile from the API...</p>}
-        {profileError && (
-          <div role="alert">
-            <p className="auth-error">{profileError}</p>
-            <button onClick={() => void loadProfile()}>Retry</button>
-          </div>
-        )}
-        {!loadingProfile && profile && (
-          <div>
-            <p><strong>Name:</strong> {profile.name || "Not set"}</p>
-            <p><strong>Email:</strong> {profile.email}</p>
-            <p><strong>Application user ID:</strong> <code>{profile.id}</code></p>
-            <p><strong>Profile created:</strong> {new Date(profile.created_at).toLocaleString()}</p>
-          </div>
-        )}
-      </section>
-
-      <hr />
-
-      <section aria-labelledby="library-heading">
-        <h2 id="library-heading">Your audio library</h2>
-        {loadingLibrary && (
-          <p role="status">Loading your uploaded audio files...</p>
-        )}
-        {libraryError && (
-          <div role="alert">
-            <p className="auth-error">{libraryError}</p>
-            <button type="button" onClick={() => void loadLibrary()}>
-              Retry
-            </button>
-          </div>
-        )}
-        {!loadingLibrary && !libraryError && visibleLibrary.length === 0 && (
-          <p>Your library is empty. Upload a track to get started.</p>
-        )}
-        {visibleLibrary.length > 0 && (
-          <>
-            <ul>
-              {visibleLibrary.map((track) => (
-                <li key={track.id}>
-                  <Link to={`/audio/${track.id}`}>
-                    <strong>{track.original_filename}</strong>
-                  </Link>
-                  {" — "}
-                  {track.duration === null
-                    ? "Duration unavailable"
-                    : formatDuration(track.duration)}
-                  {" · "}
-                  {track.file_format.toUpperCase()}
-                  {" · Uploaded "}
-                  {new Date(track.created_at).toLocaleDateString()}
-                  {" · Analysis "}
-                  {track.analysis_status.toLowerCase()}
-                  {track.bpm !== null && <> · {track.bpm.toFixed(1)} BPM</>}
-                  {track.musical_key && (
-                    <> · {track.musical_key}{track.mode ? ` ${track.mode}` : ""}</>
-                  )}
-                </li>
-              ))}
-            </ul>
-            {visibleLibrary.length < libraryTotal && (
-              <button
-                type="button"
-                disabled={loadingLibrary}
-                onClick={() => void loadLibrary(visibleLibrary.length, true)}
-              >
-                {loadingLibrary ? "Loading..." : "Load more"}
-              </button>
-            )}
-          </>
-        )}
-      </section>
-
-      <hr />
-
-      <section aria-labelledby="analysis-heading">
-        <h2 id="analysis-heading">Analyse an audio track</h2>
-        <p>
-          Upload an audio file to estimate its BPM and musical key. Supported formats:
-          WAV, MP3, FLAC, OGG, M4A and AAC (maximum 50 MB).
-        </p>
-
-        <div>
-          <label htmlFor="audio-file">Choose an audio file</label>{" "}
-          <input
-            ref={fileInputRef}
-            id="audio-file"
-            type="file"
-            accept=".wav,.mp3,.flac,.ogg,.m4a,.aac,audio/*"
-            disabled={isUploading || isAnalyzing}
-            onChange={(event) => handleFileChange(event.target.files?.[0])}
-          />
-        </div>
-
-        {visibleSelectedFile && (
-          <p><strong>Selected:</strong> {visibleSelectedFile.name} ({formatFileSize(visibleSelectedFile.size)})</p>
-        )}
-
-        {uploadError && (
-          <div role="alert"><p className="auth-error">{uploadError}</p></div>
-        )}
-
-        <button
-          type="button"
-          onClick={() => void handleUpload()}
-          disabled={!visibleSelectedFile || isUploading || isAnalyzing || !!visibleUploadedAudio}
-        >
-          {isUploading ? "Uploading to storage..." : visibleUploadedAudio ? "Uploaded" : "Upload track"}
-        </button>
-
-        {visibleUploadedAudio && (
-          <p role="status">
-            Upload complete. Your track is stored and ready for analysis.
+      <main className="mx-auto w-full max-w-[1200px] flex-1 px-5 py-10 sm:px-8 sm:py-14 my-0">
+        {signOutError && (
+          <p role="alert" className="mb-6 rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+            {signOutError}
           </p>
         )}
 
-        {analysisError && (
-          <div role="alert"><p className="auth-error">{analysisError}</p></div>
-        )}
+        {activeTab === "library" ? (
+          <div className="space-y-12">
+            <div className="flex flex-col gap-8 sm:flex-row sm:items-end sm:justify-between">
+              <div className="min-w-0">
+                <p className="font-mono text-[11px] uppercase tracking-widest text-subtle">
+                  Your personal soundspace
+                </p>
+                <h1 className="mt-3 text-4xl font-medium leading-[1.2] tracking-tight text-ink sm:text-5xl">
+                  {greeting}
+                  {firstName ? `, ${firstName}` : ""}.
+                </h1>
+                <p className="mt-3 text-base text-muted">
+                  Every sound has a story. Find what's inside yours.
+                </p>
+              </div>
 
-        <button
-          type="button"
-          onClick={() => void handleAnalyse()}
-          disabled={!visibleUploadedAudio || isUploading || isAnalyzing}
-        >
-          {isAnalyzing ? "Analysing stored track..." : "Analyse track"}
-        </button>
-
-        {isAnalyzing && (
-          <p role="status">Your stored audio is being analysed. Longer tracks may take a little while.</p>
-        )}
-
-        {visibleAnalysis && (
-          <section aria-labelledby="results-heading" aria-live="polite">
-            <hr />
-            <h2 id="results-heading">Analysis results</h2>
-            <p><strong>File:</strong> {visibleAnalysis.filename}</p>
-            <p><strong>Duration:</strong> {formatDuration(visibleAnalysis.duration_seconds)}</p>
-            <p><strong>Sample rate:</strong> {visibleAnalysis.sample_rate.toLocaleString()} Hz</p>
-
-            <div className="analysis-results">
-              <article>
-                <h3>Tempo</h3>
-                {bpm ? (
-                  <>
-                    <p><strong>{bpm.bpm.toFixed(1)} BPM</strong></p>
-                    <p>Detected beats: {bpm.detected_beats}</p>
-                    {bpm.note && <p>{bpm.note}</p>}
-                  </>
-                ) : (
-                  <p role="status">
-                    {visibleAnalysis.results.bpm?.error ?? "The BPM analyzer did not return a result."}
-                  </p>
-                )}
-              </article>
-
-              <article>
-                <h3>Musical key</h3>
-                {musicalKey ? (
-                  <>
-                    <p><strong>{musicalKey.label}</strong></p>
-                    <p>Mode: {musicalKey.mode}</p>
-                    <p>Alternative candidate: {musicalKey.runner_up}</p>
-                    <p>Profile correlation: {musicalKey.correlation_score.toFixed(3)}</p>
-                    <p>Score margin: {musicalKey.score_margin.toFixed(3)}</p>
-                    {musicalKey.note && <p>{musicalKey.note}</p>}
-                  </>
-                ) : (
-                  <p role="status">
-                    {visibleAnalysis.results.musical_key?.error ?? "The musical-key analyzer did not return a result."}
-                  </p>
-                )}
-              </article>
+              <div className="flex flex-col gap-2 sm:items-end">
+                <button
+                  type="button"
+                  onClick={() => setUploadOpen(true)}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-6 py-3 text-sm font-medium text-accent-ink shadow-lg shadow-accent/10 transition-all hover:-translate-y-0.5 hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+                >
+                  <Upload className="h-4 w-4" />
+                  Upload audio
+                </button>
+                <p className="font-mono text-[11px] text-subtle">
+                  WAV, MP3, FLAC, OGG, M4A, AAC · UP TO 50 MB
+                </p>
+              </div>
             </div>
 
-            <h3>Analyzer status</h3>
-            <ul>
-              {Object.entries(visibleAnalysis.results).map(([name, result]) => (
-                <li key={name}>
-                  <strong>{name.replaceAll("_", " ")}:</strong>{" "}
-                  {result.status === "success"
-                    ? "Completed"
-                    : `Failed${result.error ? ` — ${result.error}` : ""}`}
-                </li>
-              ))}
-            </ul>
-          </section>
+            <LibrarySection
+              items={visibleLibrary}
+              total={libraryTotal}
+              loading={loadingLibrary}
+              error={libraryError}
+              query={librarySearch}
+              onQueryChange={setLibrarySearch}
+              onRetry={() => void loadLibrary()}
+              onLoadMore={() => void loadLibrary(visibleLibrary.length, true)}
+              onUpload={() => setUploadOpen(true)}
+            />
+          </div>
+        ) : (
+          <ProfilePanel
+            profile={profile}
+            loading={loadingProfile}
+            error={profileError}
+            initials={initials}
+            onRetry={() => void loadProfile()}
+          />
         )}
-      </section>
+      </main>
 
-      <hr />
-      <p>
-        <strong>Supabase Auth email:</strong> {user?.email ?? "No active session"}
-      </p>
-      <button onClick={() => void handleSignOut()} disabled={signingOut}>
-        {signingOut ? "Signing out..." : "Sign out"}
-      </button>
-    </main>
+      <footer className="border-t border-line bg-showcase-footer">
+        <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-3 px-5 py-5 text-xs text-subtle sm:flex-row sm:items-center sm:justify-between sm:px-8">
+          <span className="flex items-center gap-2 font-mono">
+            <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+            All systems in harmony
+          </span>
+          <p>Your sound. Your space. Only you can access your audio.</p>
+          <span className="font-mono">HARMONIX / v.2.4</span>
+        </div>
+      </footer>
+
+      {uploadOpen && (
+        <AudioUploadModal
+          fileInputRef={fileInputRef}
+          selectedFile={visibleSelectedFile}
+          uploadedAudio={visibleUploadedAudio}
+          analysis={visibleAnalysis}
+          bpm={bpm}
+          musicalKey={musicalKey}
+          uploadError={uploadError}
+          analysisError={analysisError}
+          isUploading={isUploading}
+          isAnalyzing={isAnalyzing}
+          onClose={() => setUploadOpen(false)}
+          onFileChange={handleFileChange}
+          onUpload={() => void handleUpload()}
+          onAnalyse={() => void handleAnalyse()}
+        />
+      )}
+    </div>
   );
 }
