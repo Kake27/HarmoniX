@@ -270,24 +270,6 @@ class AudioLibraryApiTests(unittest.TestCase):
         self.assertEqual(raised.exception.status_code, 404)
         create_presigned_url.assert_not_called()
 
-    @patch("app.api.audio.object_storage.create_presigned_get_url")
-    @patch("app.api.audio.object_storage.provider", "minio")
-    def test_access_url_is_unavailable_when_minio_is_selected(
-        self, create_presigned_url
-    ) -> None:
-        audio = make_audio(self.user.id)
-        with self.assertRaises(HTTPException) as raised:
-            get_audio_access_url(
-                audio.id,
-                self.user,
-                DetailDatabase(audio),
-                Response(),
-                disposition="inline",
-            )
-
-        self.assertEqual(raised.exception.status_code, 503)
-        create_presigned_url.assert_not_called()
-
     def test_library_validates_pagination(self) -> None:
         with self.assertRaises(HTTPException) as raised:
             list_audio(self.user, LibraryDatabase(make_audio(self.user.id)), 101, 0)

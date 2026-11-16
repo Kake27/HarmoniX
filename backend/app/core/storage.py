@@ -28,41 +28,21 @@ class ObjectStorage:
             config.r2_secret_access_key,
             config.r2_bucket_name,
         )
-        configured_r2_values = [value for value in r2_values if value]
+        if not all(r2_values):
+            raise ValueError("All Cloudflare R2 settings are required.")
 
-        if configured_r2_values and len(configured_r2_values) != len(r2_values):
-            raise ValueError(
-                "Configure all R2 settings or leave them all empty to use MinIO."
-            )
-
-        if configured_r2_values:
-            self.provider = "r2"
-            self.bucket = config.r2_bucket_name
-            self.client = boto3.client(
-                "s3",
-                endpoint_url=(
-                    f"https://{config.r2_account_id}.r2.cloudflarestorage.com"
-                ),
-                aws_access_key_id=config.r2_access_key_id,
-                aws_secret_access_key=config.r2_secret_access_key,
-                region_name="auto",
-                config=Config(s3={"addressing_style": "path"}),
-            )
-        else:
-            self.provider = "minio"
-            self.bucket = config.minio_bucket_name
-            self.client = boto3.client(
-                "s3",
-                endpoint_url=config.minio_endpoint_url,
-                aws_access_key_id=config.minio_access_key,
-                aws_secret_access_key=config.minio_secret_key,
-                region_name="us-east-1",
-                config=Config(s3={"addressing_style": "path"}),
-            )
-            self.presign_client = None
-
-        if self.provider == "r2":
-            self.presign_client = self.client
+        self.provider = "r2"
+        self.bucket = config.r2_bucket_name
+        self.client = boto3.client(
+            "s3",
+            endpoint_url=(
+                f"https://{config.r2_account_id}.r2.cloudflarestorage.com"
+            ),
+            aws_access_key_id=config.r2_access_key_id,
+            aws_secret_access_key=config.r2_secret_access_key,
+            region_name="auto",
+            config=Config(s3={"addressing_style": "path"}),
+        )
 
     def make_storage_url(self, key: str) -> str:
         return f"s3://{self.bucket}/{key}"
@@ -119,11 +99,6 @@ class ObjectStorage:
         disposition: str,
         expires_in: int,
     ) -> str:
-        if self.provider != "r2" or self.presign_client is None:
-            raise StorageError(
-                "Presigned audio URLs are only available with Cloudflare R2."
-            )
-
         bucket, key = self._parse_storage_url(storage_url)
         if disposition not in {"inline", "attachment"}:
             raise ValueError("Invalid content disposition.")
@@ -136,7 +111,7 @@ class ObjectStorage:
         )
 
         try:
-            return self.presign_client.generate_presigned_url(
+            return self.client.generate_presigned_url(
                 "get_object",
                 Params={
                     "Bucket": bucket,

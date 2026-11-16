@@ -1,9 +1,12 @@
+import os
 import unittest
 from unittest.mock import Mock
 from unittest.mock import patch
 
+from pydantic import ValidationError
+
 from app.core.config import Settings
-from app.core.storage import ObjectStorage, StorageError
+from app.core.storage import ObjectStorage
 
 
 def make_settings(**overrides) -> Settings:
@@ -11,23 +14,25 @@ def make_settings(**overrides) -> Settings:
         "database_url": "postgresql+psycopg://user:password@localhost/database",
         "supabase_url": "https://example.supabase.co",
         "supabase_publishable_key": "test-key",
+        "r2_account_id": "account",
+        "r2_access_key_id": "access",
+        "r2_secret_access_key": "secret",
+        "r2_bucket_name": "harmonix-audio",
     }
     values.update(overrides)
     return Settings(_env_file=None, **values)
 
 
 class ObjectStorageTests(unittest.TestCase):
-    @patch("app.core.storage.boto3.client")
-    def test_uses_minio_when_r2_is_not_configured(self, client_factory) -> None:
-        storage = ObjectStorage(make_settings())
-
-        self.assertEqual(storage.provider, "minio")
-        self.assertEqual(storage.bucket, "harmonix-audio")
-        client_factory.assert_called_once()
-        self.assertEqual(
-            client_factory.call_args.kwargs["endpoint_url"],
-            "http://localhost:9000",
-        )
+    def test_settings_require_r2_credentials(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaises(ValidationError):
+                Settings(
+                    _env_file=None,
+                    database_url="postgresql+psycopg://user:password@localhost/database",
+                    supabase_url="https://example.supabase.co",
+                    supabase_publishable_key="test-key",
+                )
 
     @patch("app.core.storage.boto3.client")
     def test_uses_r2_when_all_r2_settings_are_present(self, client_factory) -> None:
@@ -47,9 +52,13 @@ class ObjectStorageTests(unittest.TestCase):
             "https://account.r2.cloudflarestorage.com",
         )
 
-    def test_rejects_partial_r2_configuration(self) -> None:
-        with self.assertRaisesRegex(ValueError, "all R2 settings"):
-            ObjectStorage(make_settings(r2_account_id="account"))
+    def test_requires_all_r2_settings(self) -> None:
+        with self.assertRaisesRegex(ValueError, "All Cloudflare R2 settings"):
+            ObjectStorage(
+                make_settings(
+                    r2_account_id="",
+                )
+            )
 
     @patch("app.core.storage.boto3.client")
     def test_storage_url_is_a_stable_bucket_and_key_reference(
@@ -142,18 +151,6 @@ class ObjectStorageTests(unittest.TestCase):
                 "form-data",
                 900,
             )
-
-    def test_refuses_presigned_urls_when_minio_is_selected(self) -> None:
-        storage = ObjectStorage(make_settings())
-
-        with self.assertRaisesRegex(StorageError, "only available with Cloudflare R2"):
-            storage.create_presigned_get_url(
-                "s3://harmonix-audio/users/user/audio/track.wav",
-                "track.wav",
-                "inline",
-                900,
-            )
-
 
 if __name__ == "__main__":
     unittest.main()

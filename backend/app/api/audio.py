@@ -308,12 +308,6 @@ async def transpose_audio(
             detail="Audio file not found.",
         )
 
-    if object_storage.provider != "r2":
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Audio transposition is currently available only with Cloudflare R2.",
-        )
-
     audio_suffix = Path(audio.original_filename).suffix.lower()
     if audio_suffix not in ALLOWED_EXTENSIONS:
         raise HTTPException(
@@ -472,12 +466,6 @@ def get_audio_access_url(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Audio file not found.",
-        )
-
-    if object_storage.provider != "r2":
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Audio playback and downloads are currently available only with Cloudflare R2.",
         )
 
     try:

@@ -10,7 +10,7 @@ import type {
 } from "../../services/api";
 
 interface AudioUploadModalProps {
-  fileInputRef: RefObject<HTMLInputElement>;
+  fileInputRef: RefObject<HTMLInputElement | null>;
   selectedFile: File | null;
   uploadedAudio: UploadedAudio | null;
   analysis: AnalysisResponse | null;

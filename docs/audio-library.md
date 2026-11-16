@@ -14,10 +14,9 @@ Supabase user, in newest-first order:
 The detail endpoint returns the latest saved analysis and does not trigger
 processing. An audio file without an analysis row is reported as `PENDING`.
 The access URL endpoint verifies ownership and creates a 15-minute presigned
-URL for playback (`inline`) or download (`attachment`) when R2 is configured.
-URL issuing is currently unavailable with MinIO. The frontend uses the private
-object store directly for media transfer; signed URLs are temporary and are
-not persisted in the database or browser storage.
+URL for playback (`inline`) or download (`attachment`) from Cloudflare R2.
+The frontend uses the private object store directly for media transfer; signed
+URLs are temporary and are not persisted in the database or browser storage.
 
 The transpose endpoint accepts `{"semitones": -6}` through
 `{"semitones": 6}`, downloads an owned original from R2, and streams a
