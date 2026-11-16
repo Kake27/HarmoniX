@@ -1,64 +1,30 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { ArrowLeft, AudioLines, Download, LoaderCircle, Trash2 } from "lucide-react";
 
+import { AppFooter } from "../components/AppFooter";
+import { AnalysisRail } from "../components/audio/AnalysisRail";
+import { AnalysisStatusIndicator } from "../components/audio/AnalysisStatusIndicator";
+import { AudioDetailHeader } from "../components/audio/AudioDetailHeader";
+import { FileInfoStrip } from "../components/audio/FileInfoStrip";
+import { PitchShiftPanel } from "../components/audio/PitchShiftPanel";
+import { PlaybackSpeedPanel } from "../components/audio/PlaybackSpeedPanel";
+import { PlayerTransport } from "../components/audio/PlayerTransport";
+import { StemMixerPlaceholder } from "../components/audio/StemMixerPlaceholder";
+import { WaveformTimeline } from "../components/audio/WaveformTimeline";
+import {
+  ALERT_ACTION,
+  ALERT_BOX,
+  EYEBROW,
+  FOCUS_RING,
+  PAGE_CONTAINER,
+  SECONDARY_BUTTON,
+} from "../components/audio/styles";
 import { useAuth } from "../contexts/AuthContext";
+import { useMediaPlayer } from "../hooks/useMediaPlayer";
+import { getInitials } from "../lib/format";
+import { getExpectedKey } from "../lib/music";
 import { api, ApiError, type AudioDetailResponse } from "../services/api";
-
-function formatDuration(seconds: number | null): string {
-  if (seconds === null) return "Unavailable";
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = Math.floor(seconds % 60);
-  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
-}
-
-function formatDate(value: string): string {
-  return new Date(value).toLocaleString();
-}
-
-const PLAYBACK_RATE_MIN = 0.25;
-const PLAYBACK_RATE_MAX = 2;
-const PLAYBACK_RATE_STEP = 0.05;
-const PLAYBACK_RATE_OPTIONS = [0.75, 0.9, 1, 1.1, 1.25, 1.5, 2];
-
-const PITCH_CLASSES = [
-  "C", "C#", "D", "D#", "E", "F",
-  "F#", "G", "G#", "A", "A#", "B",
-];
-const KEY_TO_PITCH_CLASS: Record<string, number> = {
-  C: 0,
-  "C#": 1,
-  Db: 1,
-  D: 2,
-  "D#": 3,
-  Eb: 3,
-  E: 4,
-  F: 5,
-  "F#": 6,
-  Gb: 6,
-  G: 7,
-  "G#": 8,
-  Ab: 8,
-  A: 9,
-  "A#": 10,
-  Bb: 10,
-  B: 11,
-};
-
-function getExpectedKey(
-  key: string | null,
-  mode: string | null,
-  semitones: number,
-): string | null {
-  if (!key || !(key in KEY_TO_PITCH_CLASS)) return null;
-  const shiftedIndex =
-    (KEY_TO_PITCH_CLASS[key] + semitones + PITCH_CLASSES.length) %
-    PITCH_CLASSES.length;
-  return `${PITCH_CLASSES[shiftedIndex]}${mode ? ` ${mode}` : ""}`;
-}
-
-function formatPlaybackRate(value: number): string {
-  return `${Number(value.toFixed(2)).toString()}×`;
-}
 
 type AudioWithPitchPreservation = HTMLAudioElement & {
   preservesPitch?: boolean;
@@ -95,10 +61,17 @@ export default function AudioDetailPage() {
     semitones: number;
     url: string;
   } | null>(null);
+  const [volume, setVolume] = useState(1);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isLooping, setIsLooping] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState("");
   const transposedUrlRef = useRef<string | null>(null);
   const originalAudioRef = useRef<HTMLAudioElement | null>(null);
   const transposedAudioRef = useRef<HTMLAudioElement | null>(null);
   const isMountedRef = useRef(false);
+  const originalPlayer = useMediaPlayer(originalAudioRef);
+  const transposedPlayer = useMediaPlayer(transposedAudioRef);
 
   const applyPlaybackRate = useCallback((audioElement: HTMLAudioElement | null) => {
     if (!audioElement) return;
@@ -195,6 +168,14 @@ export default function AudioDetailPage() {
     applyPlaybackRate(originalAudioRef.current);
     applyPlaybackRate(transposedAudioRef.current);
   }, [applyPlaybackRate, playbackUrl, visibleTransposedPreview?.url]);
+
+  useEffect(() => {
+    const audioElement = originalAudioRef.current;
+    if (!audioElement) return;
+    audioElement.volume = volume;
+    audioElement.muted = isMuted;
+    audioElement.loop = isLooping;
+  }, [volume, isMuted, isLooping, playbackUrl]);
 
   const refreshPlaybackUrl = useCallback(async (targetAudioId: string) => {
     try {
@@ -343,304 +324,318 @@ export default function AudioDetailPage() {
     }
   }
 
+  async function handleSignOut() {
+    setSigningOut(true);
+    setSignOutError("");
+    try {
+      await signOut();
+      navigate("/login", { replace: true });
+    } catch {
+      setSignOutError("Could not sign out. Please try again.");
+    } finally {
+      setSigningOut(false);
+    }
+  }
+
+  function handleToggleOriginal() {
+    transposedPlayer.pause();
+    originalPlayer.toggle();
+  }
+
+  function handleTogglePreview() {
+    originalPlayer.pause();
+    transposedPlayer.toggle();
+  }
+
+  function handleVolumeChange(nextVolume: number) {
+    setVolume(nextVolume);
+    setIsMuted(nextVolume === 0);
+  }
+
+  const metadata = (user?.user_metadata ?? {}) as { name?: string; full_name?: string };
+  const displayName = metadata.name || metadata.full_name || user?.email || "Account";
+  const displayEmail = user?.email ?? "";
+
+  const playerDuration = originalPlayer.duration || visibleAudio?.duration || 0;
+  const isPlayerDisabled = !playbackUrl;
+  const playbackState = isLoadingPlayback
+    ? "Preparing"
+    : originalPlayer.isPlaying
+      ? "Playing"
+      : originalPlayer.currentTime > 0
+        ? "Paused"
+        : "Ready";
+
+  const expectedKey = visibleAudio?.analysis?.musical_key
+    ? getExpectedKey(visibleAudio.analysis.musical_key, visibleAudio.analysis.mode, semitones) ?? "Unavailable"
+    : null;
+
   return (
-    <main className="home-container">
-      <p><Link to="/">Back to library</Link></p>
-      {loading && <p role="status">Loading audio details...</p>}
-      {error && (
-        <div role="alert">
-          <p className="auth-error">{error}</p>
-          {error !== "Audio file not found." && (
-            <button type="button" onClick={() => void loadAudio()}>Retry</button>
-          )}
-        </div>
-      )}
+    <div className="flex min-h-screen flex-col bg-canvas font-sans leading-[1.5] text-ink">
+      <AudioDetailHeader
+        name={displayName}
+        email={displayEmail}
+        initials={getInitials(displayName)}
+        signingOut={signingOut}
+        onSignOut={() => void handleSignOut()}
+      />
 
-      {!loading && visibleAudio && (
-        <>
-          <header>
-            <h1>{visibleAudio.original_filename}</h1>
-            <p>Analysis status: {visibleAudio.analysis_status.toLowerCase()}</p>
-            <button
-              type="button"
-              onClick={() => void handleDelete()}
-              disabled={isDeleting || isAnalyzing}
-            >
-              {isDeleting ? "Deleting..." : "Delete audio"}
-            </button>
-          </header>
-          {deleteError && (
-            <div role="alert">
-              <p className="auth-error">{deleteError}</p>
+      <main className={`${PAGE_CONTAINER} flex-1 pb-14 pt-6 sm:pb-16 sm:pt-8`}>
+        <nav aria-label="Breadcrumb">
+          <ol className="m-0 flex list-none items-center gap-2 p-0 text-xs">
+            <li>
+              <Link
+                to="/"
+                className={`inline-flex items-center gap-2 rounded-sm text-muted no-underline transition-colors hover:text-accent ${FOCUS_RING}`}
+              >
+                <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+                Library
+              </Link>
+            </li>
+            <li className="text-wave-idle" aria-hidden="true">/</li>
+            <li aria-current="page" className="text-ink">Audio detail</li>
+          </ol>
+        </nav>
+
+        {signOutError && (
+          <p role="alert" className={`${ALERT_BOX} mt-6`}>{signOutError}</p>
+        )}
+
+        {loading && (
+          <div
+            role="status"
+            className="mt-8 flex items-center justify-center gap-3 rounded-xl border border-line bg-panel px-6 py-20 text-sm text-muted"
+          >
+            <LoaderCircle className="h-4 w-4 animate-spin text-accent" aria-hidden="true" />
+            Loading audio details...
+          </div>
+        )}
+
+        {error && (
+          <div
+            role="alert"
+            className="mt-8 flex flex-col items-center gap-4 rounded-xl border border-line bg-panel px-6 py-16 text-center"
+          >
+            <p className="m-0 text-sm text-danger">{error}</p>
+            {error !== "Audio file not found." ? (
               <button
                 type="button"
-                onClick={() => void handleDelete()}
-                disabled={isDeleting || isAnalyzing}
+                onClick={() => void loadAudio()}
+                className={`${SECONDARY_BUTTON} px-4 py-2 text-sm`}
               >
-                Retry delete
+                Retry
               </button>
-            </div>
-          )}
-
-          <section aria-labelledby="audio-metadata-heading">
-            <h2 id="audio-metadata-heading">Audio metadata</h2>
-            <dl>
-              <dt>Format</dt><dd>{visibleAudio.file_format.toUpperCase()}</dd>
-              <dt>Duration</dt><dd>{formatDuration(visibleAudio.duration)}</dd>
-              <dt>Sample rate</dt>
-              <dd>{visibleAudio.sample_rate ? `${visibleAudio.sample_rate.toLocaleString()} Hz` : "Unavailable"}</dd>
-              <dt>Channels</dt><dd>{visibleAudio.channels ?? "Unavailable"}</dd>
-              <dt>File size</dt><dd>{visibleAudio.file_size_bytes.toLocaleString()} bytes</dd>
-              <dt>Uploaded</dt><dd>{formatDate(visibleAudio.created_at)}</dd>
-            </dl>
-          </section>
-
-          <section aria-labelledby="audio-playback-heading">
-            <h2 id="audio-playback-heading">Audio</h2>
-            {isLoadingPlayback && <p role="status">Preparing audio...</p>}
-            {playbackUrl && (
-              <audio
-                ref={originalAudioRef}
-                controls
-                preload="metadata"
-                src={playbackUrl}
-                onError={() => setPlayback({
-                  audioId: visibleAudio.id,
-                  url: playbackUrl,
-                  error: "Could not play this audio. The access link may have expired.",
-                })}
-                aria-label={`Play ${visibleAudio.original_filename}`}
-              >
-                Your browser does not support audio playback.
-              </audio>
+            ) : (
+              <Link to="/" className={`${SECONDARY_BUTTON} px-4 py-2 text-sm no-underline`}>
+                Back to library
+              </Link>
             )}
-            <div aria-label="Playback speed controls">
-              <label htmlFor="playback-rate-slider">Playback speed</label>
-              <div>
-                <span aria-live="polite">{formatPlaybackRate(playbackRate)}</span>
-                <button
-                  type="button"
-                  onClick={() => setPlaybackRate(1)}
-                  aria-label="Reset playback speed to default"
-                >
-                  Reset
-                </button>
-              </div>
-              <input
-                id="playback-rate-slider"
-                type="range"
-                min={PLAYBACK_RATE_MIN}
-                max={PLAYBACK_RATE_MAX}
-                step={PLAYBACK_RATE_STEP}
-                value={playbackRate}
-                aria-label="Playback speed in multiples of normal speed"
-                onChange={(event) => {
-                  const nextRate = Number(event.currentTarget.value);
-                  setPlaybackRate(nextRate);
-                }}
-              />
-              <div role="group" aria-label="Quick playback speed options">
-                {PLAYBACK_RATE_OPTIONS.map((option) => (
+          </div>
+        )}
+
+        {!loading && visibleAudio && (
+          <div className="mt-6 flex flex-col gap-6 sm:mt-7">
+            <header className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+              <h1
+                className="m-0 min-w-0 break-words text-[28px] font-normal leading-[1.15] tracking-[-0.035em] text-ink sm:text-[38px]"
+                title={visibleAudio.original_filename}
+              >
+                {visibleAudio.original_filename}
+              </h1>
+
+              <div className="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-3">
+                <AnalysisStatusIndicator status={visibleAudio.analysis_status} isAnalyzing={isAnalyzing} />
+                <div className="flex flex-1 flex-wrap items-center gap-3 sm:flex-none sm:gap-5">
                   <button
-                    key={option}
                     type="button"
-                    aria-label={`Set playback speed to ${formatPlaybackRate(option)}`}
-                    aria-pressed={Math.abs(playbackRate - option) < 0.001}
-                    onClick={() => setPlaybackRate(option)}
+                    onClick={() => void handleDownload()}
+                    disabled={isDownloading}
+                    className={`${SECONDARY_BUTTON} h-11 flex-1 px-5 text-[13px] font-semibold sm:flex-none`}
                   >
-                    {formatPlaybackRate(option)}
+                    {isDownloading ? (
+                      <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <Download className="h-4 w-4 text-muted" aria-hidden="true" />
+                    )}
+                    {isDownloading ? "Preparing..." : "Download original"}
                   </button>
-                ))}
+                  <button
+                    type="button"
+                    onClick={() => void handleDelete()}
+                    disabled={isDeleting || isAnalyzing}
+                    className={`inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-lg border border-danger/30 bg-danger/10 px-5 text-[13px] font-semibold text-danger transition-colors hover:border-danger/50 hover:bg-danger/15 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none ${FOCUS_RING}`}
+                  >
+                    {isDeleting ? (
+                      <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" aria-hidden="true" />
+                    )}
+                    {isDeleting ? "Deleting..." : "Delete audio"}
+                  </button>
+                </div>
               </div>
-            </div>
-            {playbackError && (
-              <div role="alert">
-                <p className="auth-error">{playbackError}</p>
-                <button
-                  type="button"
-                  onClick={() => void refreshPlaybackUrl(visibleAudio.id)}
-                  disabled={isLoadingPlayback}
-                >
-                  Refresh playback
-                </button>
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={() => void handleDownload()}
-              disabled={isDownloading}
-            >
-              {isDownloading ? "Preparing download..." : "Download audio"}
-            </button>
-          </section>
+            </header>
 
-          <section aria-labelledby="pitch-shift-heading">
-            <h2 id="pitch-shift-heading">Pitch shift</h2>
-            <p>
-              Selected shift: {semitones > 0 ? `+${semitones}` : semitones}{" "}
-              {Math.abs(semitones) === 1 ? "semitone" : "semitones"}
-              {semitones === 0 ? " (original pitch)" : ""}
-            </p>
-            {visibleAudio.analysis?.musical_key && (
-              <p>
-                Expected key:{" "}
-                {getExpectedKey(
-                  visibleAudio.analysis.musical_key,
-                  visibleAudio.analysis.mode,
-                  semitones,
-                ) ?? "Unavailable"}
-              </p>
-            )}
-            <div>
-              <button
-                type="button"
-                aria-label="Shift down one semitone"
-                onClick={() => setSemitones((value) => Math.max(-6, value - 1))}
-                disabled={semitones <= -6 || isTransposing}
-              >
-                −
-              </button>
-              <input
-                type="range"
-                min={-6}
-                max={6}
-                step={1}
-                value={semitones}
-                aria-label="Pitch shift in semitones"
-                onChange={(event) => setSemitones(Number(event.currentTarget.value))}
-                disabled={isTransposing}
-              />
-              <button
-                type="button"
-                aria-label="Shift up one semitone"
-                onClick={() => setSemitones((value) => Math.min(6, value + 1))}
-                disabled={semitones >= 6 || isTransposing}
-              >
-                +
-              </button>
-            </div>
-            <button
-              type="button"
-              onClick={() => void handleTranspose()}
-              disabled={isTransposing || semitones === 0}
-            >
-              {isTransposing ? "Transposing..." : "Transpose"}
-            </button>
-            {transposeError && (
-              <div role="alert">
-                <p className="auth-error">{transposeError}</p>
+            {deleteError && (
+              <div role="alert" className={ALERT_BOX}>
+                <p className="m-0">{deleteError}</p>
                 <button
                   type="button"
-                  onClick={() => void handleTranspose()}
-                  disabled={isTransposing}
+                  onClick={() => void handleDelete()}
+                  disabled={isDeleting || isAnalyzing}
+                  className={ALERT_ACTION}
                 >
-                  Retry transpose
+                  Retry delete
                 </button>
               </div>
             )}
-            {visibleTransposedPreview && (
-              <div>
-                <h3>
-                  Transposed preview (
-                  {visibleTransposedPreview.semitones > 0
-                    ? `+${visibleTransposedPreview.semitones}`
-                    : visibleTransposedPreview.semitones} semitones)
-                </h3>
+
+            <section
+              aria-labelledby="original-track-heading"
+              className="overflow-hidden rounded-xl border border-line bg-panel"
+            >
+              <div className="grid lg:grid-cols-[minmax(0,1fr)_322px]">
+                <div className="flex min-w-0 flex-col gap-5 p-5 sm:p-7">
+                  <div className="flex items-center justify-between gap-3">
+                    <h2 id="original-track-heading" className={EYEBROW}>
+                      Original track
+                    </h2>
+                    <span
+                      className={`inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.08em] ${
+                        originalPlayer.isPlaying ? "text-accent" : "text-subtle"
+                      }`}
+                    >
+                      <AudioLines
+                        className={`h-3.5 w-3.5 ${originalPlayer.isPlaying ? "animate-pulse" : ""}`}
+                        aria-hidden="true"
+                      />
+                      {playbackState}
+                    </span>
+                  </div>
+
+                  {isLoadingPlayback && <p role="status" className="sr-only">Preparing audio...</p>}
+
+                  <WaveformTimeline
+                    seed={visibleAudio.id}
+                    trackName={visibleAudio.original_filename}
+                    currentTime={originalPlayer.currentTime}
+                    duration={playerDuration}
+                    disabled={isPlayerDisabled}
+                    onSeek={originalPlayer.seek}
+                  />
+
+                  <PlayerTransport
+                    trackName={visibleAudio.original_filename}
+                    disabled={isPlayerDisabled}
+                    isPlaying={originalPlayer.isPlaying}
+                    currentTime={originalPlayer.currentTime}
+                    duration={playerDuration}
+                    isLooping={isLooping}
+                    volume={volume}
+                    isMuted={isMuted}
+                    onTogglePlay={handleToggleOriginal}
+                    onStop={originalPlayer.stop}
+                    onSkip={originalPlayer.skip}
+                    onToggleLoop={() => setIsLooping((value) => !value)}
+                    onToggleMute={() => setIsMuted((value) => !value)}
+                    onVolumeChange={handleVolumeChange}
+                  />
+
+                  {playbackError && (
+                    <div role="alert" className={ALERT_BOX}>
+                      <p className="m-0">{playbackError}</p>
+                      <button
+                        type="button"
+                        onClick={() => void refreshPlaybackUrl(visibleAudio.id)}
+                        disabled={isLoadingPlayback}
+                        className={ALERT_ACTION}
+                      >
+                        Refresh playback
+                      </button>
+                    </div>
+                  )}
+
+                  {playbackUrl && (
+                    <audio
+                      ref={originalAudioRef}
+                      className="hidden"
+                      preload="metadata"
+                      src={playbackUrl}
+                      {...originalPlayer.mediaEvents}
+                      onError={() => setPlayback({
+                        audioId: visibleAudio.id,
+                        url: playbackUrl,
+                        error: "Could not play this audio. The access link may have expired.",
+                      })}
+                      aria-label={`Play ${visibleAudio.original_filename}`}
+                    >
+                      Your browser does not support audio playback.
+                    </audio>
+                  )}
+                </div>
+
+                <AnalysisRail
+                  audio={visibleAudio}
+                  isAnalyzing={isAnalyzing}
+                  analysisError={analysisError}
+                  onAnalyse={() => void handleAnalyse()}
+                />
+              </div>
+
+              <FileInfoStrip audio={visibleAudio} />
+            </section>
+
+            <section aria-labelledby="sound-shaping-heading" className="flex flex-col gap-4 pt-2">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
+                <h2
+                  id="sound-shaping-heading"
+                  className="m-0 text-[21px] font-normal tracking-[-0.02em] text-ink"
+                >
+                  Make it your own
+                </h2>
+                <p className="m-0 text-[11px] text-subtle">
+                  Explore freely. Your original audio stays untouched.
+                </p>
+              </div>
+
+              <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-[minmax(0,400fr)_minmax(0,400fr)_minmax(0,504fr)]">
+                <PitchShiftPanel
+                  semitones={semitones}
+                  onSemitonesChange={setSemitones}
+                  expectedKey={expectedKey}
+                  isTransposing={isTransposing}
+                  transposeError={transposeError}
+                  onTranspose={() => void handleTranspose()}
+                  preview={visibleTransposedPreview}
+                  previewPlayer={transposedPlayer}
+                  onTogglePreview={handleTogglePreview}
+                  onDownloadPreview={handleDownloadTransposed}
+                />
+                <PlaybackSpeedPanel
+                  playbackRate={playbackRate}
+                  onPlaybackRateChange={setPlaybackRate}
+                />
+                <StemMixerPlaceholder className="md:col-span-2 xl:col-span-1" />
+              </div>
+
+              {visibleTransposedPreview && (
                 <audio
                   ref={transposedAudioRef}
-                  controls
+                  className="hidden"
                   preload="metadata"
                   src={visibleTransposedPreview.url}
+                  {...transposedPlayer.mediaEvents}
                   aria-label="Play transposed preview"
                 >
                   Your browser does not support audio playback.
                 </audio>
-                <button
-                  type="button"
-                  onClick={handleDownloadTransposed}
-                >
-                  Download transposed audio
-                </button>
-              </div>
-            )}
-          </section>
+              )}
+            </section>
+          </div>
+        )}
+      </main>
 
-          <section aria-labelledby="saved-analysis-heading">
-            <h2 id="saved-analysis-heading">Saved analysis</h2>
-            {visibleAudio.analysis_status === "PENDING" && (
-              <p role="status">This track has not been analysed yet.</p>
-            )}
-            {visibleAudio.analysis_status === "PROCESSING" && (
-              <p role="status">Analysis is currently processing.</p>
-            )}
-            {isAnalyzing && (
-              <p role="status">Analysing this audio file...</p>
-            )}
-            {visibleAudio.analysis_status === "FAILED" && (
-              <p role="alert" className="auth-error">
-                {visibleAudio.analysis?.error_message ?? "Analysis failed."}
-              </p>
-            )}
-            {analysisError && (
-              <div role="alert">
-                <p className="auth-error">{analysisError}</p>
-                <button type="button" onClick={() => void handleAnalyse()} disabled={isAnalyzing}>
-                  Retry analysis
-                </button>
-              </div>
-            )}
-            {(visibleAudio.analysis_status === "PENDING" ||
-              visibleAudio.analysis_status === "FAILED") && !analysisError && (
-              <button
-                type="button"
-                onClick={() => void handleAnalyse()}
-                disabled={isAnalyzing}
-              >
-                {isAnalyzing
-                  ? "Analysing..."
-                  : visibleAudio.analysis_status === "FAILED"
-                    ? "Retry analysis"
-                    : "Analyse this audio"}
-              </button>
-            )}
-            {visibleAudio.analysis && (
-              <>
-                {(visibleAudio.analysis.bpm !== null || visibleAudio.analysis.musical_key) && (
-                  <dl>
-                    <dt>BPM</dt><dd>{visibleAudio.analysis.bpm ?? "Unavailable"}</dd>
-                    <dt>Key</dt>
-                    <dd>
-                      {visibleAudio.analysis.musical_key
-                        ? `${visibleAudio.analysis.musical_key}${visibleAudio.analysis.mode ? ` ${visibleAudio.analysis.mode}` : ""}`
-                        : "Unavailable"}
-                    </dd>
-                  </dl>
-                )}
-                {visibleAudio.analysis.status === "PARTIAL" && (
-                  <p role="status">Some analyzers did not complete successfully.</p>
-                )}
-                {visibleAudio.analysis.results && (
-                  <>
-                    <h3>Analyzer results</h3>
-                    <ul>
-                      {Object.entries(visibleAudio.analysis.results).map(([name, result]) => (
-                        <li key={name}>
-                          <strong>{name.replaceAll("_", " ")}:</strong>{" "}
-                          {result.status === "success"
-                            ? JSON.stringify(result.data)
-                            : `Failed${result.error ? ` — ${result.error}` : ""}`}
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                )}
-                <p>Analysis version: {visibleAudio.analysis.analysis_version}</p>
-                <p>Analysed: {formatDate(visibleAudio.analysis.created_at)}</p>
-              </>
-            )}
-          </section>
-        </>
-      )}
-    </main>
+      <AppFooter containerClassName="max-w-[1440px] px-5 sm:px-8 xl:px-12" />
+    </div>
   );
 }

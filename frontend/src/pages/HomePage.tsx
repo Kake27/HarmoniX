@@ -2,11 +2,13 @@ import { useRef, useState, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Upload } from "lucide-react";
 
+import { AppFooter } from "../components/AppFooter";
 import { AudioUploadModal } from "../components/home/AudioUploadModal";
 import { HomeHeader, type HomeTab } from "../components/home/HomeHeader";
 import { LibrarySection } from "../components/home/LibrarySection";
 import { ProfilePanel } from "../components/home/ProfilePanel";
 import { useAuth } from "../contexts/AuthContext";
+import { getInitials } from "../lib/format";
 import {
   api,
   ApiError,
@@ -48,16 +50,6 @@ function getGreeting(date: Date): string {
   return "Good evening";
 }
 
-function getInitials(source: string): string {
-  const initials = source
-    .trim()
-    .split(/[\s@.]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0])
-    .join("");
-  return initials || "?";
-}
 
 export default function HomePage() {
   const { user, signOut } = useAuth();
@@ -365,16 +357,7 @@ export default function HomePage() {
         )}
       </main>
 
-      <footer className="border-t border-line bg-showcase-footer">
-        <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-3 px-5 py-5 text-xs text-subtle sm:flex-row sm:items-center sm:justify-between sm:px-8">
-          <span className="flex items-center gap-2 font-mono">
-            <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-            All systems in harmony
-          </span>
-          <p>Your sound. Your space. Only you can access your audio.</p>
-          <span className="font-mono">HARMONIX / v.2.4</span>
-        </div>
-      </footer>
+      <AppFooter />
 
       {uploadOpen && (
         <AudioUploadModal
