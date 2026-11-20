@@ -47,9 +47,10 @@ class FakeQuery:
 
 
 class DeleteDatabase:
-    def __init__(self, root, child_batches=None) -> None:
+    def __init__(self, root, child_batches=None, *, fail_commit=False) -> None:
         self.root = root
         self.child_batches = child_batches or []
+        self.fail_commit = fail_commit
         self.audio_queries = 0
         self.queries = []
         self.committed = False
@@ -71,6 +72,8 @@ class DeleteDatabase:
         return query
 
     def commit(self):
+        if self.fail_commit:
+            raise RuntimeError("database unavailable")
         self.committed = True
 
     def rollback(self):
@@ -155,6 +158,26 @@ class AudioDeleteApiTests(unittest.TestCase):
         self.assertFalse(db.committed)
         self.assertFalse(db.rolled_back)
         self.assertFalse(any(query.deleted for query in db.queries))
+
+    @patch("app.api.audio.object_storage.delete_object")
+    def test_database_failure_rolls_back_metadata_deletion(
+        self, delete_object
+    ) -> None:
+        root = make_audio(self.user.id)
+        db = DeleteDatabase(root, [[]], fail_commit=True)
+
+        with self.assertRaises(HTTPException) as raised:
+            delete_audio(root.id, self.user, db)
+
+        self.assertEqual(raised.exception.status_code, 500)
+        self.assertEqual(
+            raised.exception.detail,
+            "Could not delete this audio file.",
+        )
+        delete_object.assert_called_once_with(root.storage_url)
+        self.assertFalse(db.committed)
+        self.assertTrue(db.rolled_back)
+        self.assertTrue(any(query.deleted for query in db.queries))
 
 
 if __name__ == "__main__":

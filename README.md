@@ -26,3 +26,15 @@ The Supabase URL and publishable key are public frontend configuration, not
 secrets. Keep database passwords and R2 secret keys private; do not commit `.env`.
 `docker compose down` stops and removes the app containers; it does not delete
 database records or objects stored in R2.
+
+## Run backend tests
+
+Install the backend dependencies, then run the test suite from the `backend`
+directory:
+
+```sh
+python -m unittest discover -s tests -v
+```
+
+The standard suite uses mocked Supabase and R2 boundaries and does not require
+production credentials or a live database.

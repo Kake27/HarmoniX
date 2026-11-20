@@ -8,8 +8,14 @@ from fastapi import HTTPException, Response
 from fastapi.testclient import TestClient
 
 from app.api.deps import get_db
-from app.api.audio import get_audio, get_audio_access_url, list_audio
+from app.api.audio import (
+    _normalize_analysis_status,
+    get_audio,
+    get_audio_access_url,
+    list_audio,
+)
 from app.core.auth import get_current_user
+from app.core.storage import StorageError
 from app.main import app
 from app.models.audio_analysis import AudioAnalysis
 from app.models.audio_data import AudioFileData
@@ -141,6 +147,19 @@ class AnalysisDatabase:
 
     def rollback(self) -> None:
         pass
+
+
+class EmptyLibraryDatabase:
+    def __init__(self) -> None:
+        self.queries = []
+
+    def query(self, *_entities):
+        query = FakeQuery(
+            scalar=0 if not self.queries else None,
+            all=[],
+        )
+        self.queries.append(query)
+        return query
 
 
 class AudioLibraryApiTests(unittest.TestCase):
@@ -275,6 +294,67 @@ class AudioLibraryApiTests(unittest.TestCase):
             list_audio(self.user, LibraryDatabase(make_audio(self.user.id)), 101, 0)
 
         self.assertEqual(raised.exception.status_code, 422)
+
+    def test_library_rejects_zero_limit_and_negative_offset(self) -> None:
+        for limit, offset in ((0, 0), (1, -1)):
+            with self.subTest(limit=limit, offset=offset):
+                with self.assertRaises(HTTPException) as raised:
+                    list_audio(
+                        self.user,
+                        LibraryDatabase(make_audio(self.user.id)),
+                        limit,
+                        offset,
+                    )
+                self.assertEqual(raised.exception.status_code, 422)
+
+    def test_empty_library_returns_empty_items_without_analysis_query(self) -> None:
+        db = EmptyLibraryDatabase()
+
+        response = list_audio(self.user, db, limit=50, offset=0)
+
+        self.assertEqual(response.items, [])
+        self.assertEqual(response.total, 0)
+        self.assertEqual(len(db.queries), 2)
+
+    def test_normalizes_missing_and_known_analysis_statuses(self) -> None:
+        cases = (
+            (None, None, None, "PENDING"),
+            ("PROCESSING", None, None, "PROCESSING"),
+            ("COMPLETED", None, None, "COMPLETED"),
+            ("PARTIAL", None, None, "PARTIAL"),
+            ("FAILED", None, None, "FAILED"),
+            (None, 120.0, None, "COMPLETED"),
+            (None, None, "C", "COMPLETED"),
+            ("unknown", None, None, "PENDING"),
+        )
+        for status_value, bpm, musical_key, expected in cases:
+            with self.subTest(status=status_value):
+                self.assertEqual(
+                    _normalize_analysis_status(status_value, bpm, musical_key),
+                    expected,
+                )
+
+    @patch(
+        "app.api.audio.object_storage.create_presigned_get_url",
+        side_effect=StorageError("private storage details"),
+    )
+    def test_access_url_storage_failure_is_sanitized(
+        self, create_presigned_url
+    ) -> None:
+        audio = make_audio(self.user.id)
+
+        with self.assertRaises(HTTPException) as raised:
+            get_audio_access_url(
+                audio.id,
+                self.user,
+                DetailDatabase(audio),
+                Response(),
+                disposition="inline",
+            )
+
+        self.assertEqual(raised.exception.status_code, 502)
+        self.assertNotIn("private storage details", raised.exception.detail)
+        create_presigned_url.assert_called_once()
 
     @patch("app.api.analysis.run_analysis")
     @patch("app.api.analysis.object_storage.download_to_path")

@@ -84,7 +84,9 @@ def get_current_user(
 
     # Optional profile field. Never use client-supplied metadata
     # as proof of identity.
-    metadata = auth_user.get("user_metadata") or {}
+    metadata = auth_user.get("user_metadata")
+    if not isinstance(metadata, dict):
+        metadata = {}
     name = metadata.get("full_name") or metadata.get("name")
 
     if not isinstance(name, str):

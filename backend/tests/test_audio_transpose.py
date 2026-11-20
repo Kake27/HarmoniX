@@ -10,8 +10,10 @@ import numpy as np
 from fastapi.testclient import TestClient
 
 from app.api.deps import get_db
+from app.api.audio import InvalidTranspositionAudio, _stream_transposed_file
 from app.core.audio_metadata import AudioMetadata
 from app.core.auth import get_current_user
+from app.core.storage import StorageError
 from app.main import app
 from app.models.audio_data import AudioFileData
 from app.models.user import User
@@ -57,7 +59,8 @@ class FakeDatabase:
         self.audio = audio
         self.query_object = None
 
-    def query(self, _model):
+    def query(self, model):
+        self.model = model
         self.query_object = FakeQuery(self.audio)
         return self.query_object
 
@@ -95,9 +98,9 @@ class AudioTransposeApiTests(unittest.TestCase):
         transpose_file,
         extract_metadata,
     ) -> None:
-        download_audio.side_effect = lambda _url, path: path.write_bytes(b"source")
+        download_audio.side_effect = lambda *args: args[-1].write_bytes(b"source")
         transpose_file.side_effect = (
-            lambda _source, output, _semitones: output.write_bytes(b"RIFFpreview")
+            lambda *args: args[1].write_bytes(b"RIFFpreview")
         )
         extract_metadata.return_value = AudioMetadata(1.0, 44100, 2)
 
@@ -154,6 +157,126 @@ class AudioTransposeApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 422)
         download_audio.assert_not_called()
         transpose_file.assert_not_called()
+
+    def test_accepts_both_supported_semitone_boundaries(self) -> None:
+        for semitones in (-6, 6):
+            with self.subTest(semitones=semitones):
+                with (
+                    patch(
+                        "app.api.audio.object_storage.download_to_path",
+                        side_effect=lambda *args: args[-1].write_bytes(b"source"),
+                    ),
+                    patch(
+                        "app.api.audio.extract_audio_metadata",
+                        return_value=AudioMetadata(1.0, 44100, 2),
+                    ),
+                    patch(
+                        "app.api.audio._transpose_audio_file",
+                        side_effect=lambda *args: args[1].write_bytes(b"RIFFpreview"),
+                    ) as transpose_file,
+                ):
+                    response = self.client.post(
+                        f"/api/v1/audio/{self.audio.id}/transpose",
+                        json={"semitones": semitones},
+                    )
+
+                self.assertEqual(response.status_code, 200, response.text)
+                self.assertEqual(transpose_file.call_args.args[2], semitones)
+
+    def test_rejects_non_integer_semitone_values(self) -> None:
+        for semitones in (1.5, "2", True):
+            with self.subTest(semitones=semitones):
+                response = self.client.post(
+                    f"/api/v1/audio/{self.audio.id}/transpose",
+                    json={"semitones": semitones},
+                )
+                self.assertEqual(response.status_code, 422)
+
+    def test_rejects_unsupported_audio_format(self) -> None:
+        self.audio.original_filename = "track.exe"
+
+        with patch("app.api.audio.object_storage.get_object_size") as get_size:
+            response = self.client.post(
+                f"/api/v1/audio/{self.audio.id}/transpose",
+                json={"semitones": 1},
+            )
+
+        self.assertEqual(response.status_code, 415)
+        get_size.assert_not_called()
+
+    def test_object_size_storage_error_returns_gateway_error(self) -> None:
+        with patch(
+            "app.api.audio.object_storage.get_object_size",
+            side_effect=StorageError("private object details"),
+        ):
+            response = self.client.post(
+                f"/api/v1/audio/{self.audio.id}/transpose",
+                json={"semitones": 1},
+            )
+
+        self.assertEqual(response.status_code, 502)
+        self.assertNotIn("private object details", response.text)
+
+    def test_download_failure_cleans_temporary_directory(self) -> None:
+        with patch(
+            "app.api.audio.object_storage.download_to_path",
+            side_effect=StorageError("private object details"),
+        ) as download_audio:
+            response = self.client.post(
+                f"/api/v1/audio/{self.audio.id}/transpose",
+                json={"semitones": 1},
+            )
+
+        self.assertEqual(response.status_code, 502)
+        temporary_directory = download_audio.call_args.args[1].parent
+        self.assertFalse(temporary_directory.exists())
+
+    def test_audio_metadata_duration_is_checked_before_transposition(self) -> None:
+        with (
+            patch(
+                "app.api.audio.object_storage.download_to_path",
+                side_effect=lambda *args: args[-1].write_bytes(b"source"),
+            ),
+            patch(
+                "app.api.audio.extract_audio_metadata",
+                return_value=AudioMetadata(601.0, 44100, 2),
+            ),
+            patch("app.api.audio._transpose_audio_file") as transpose_file,
+        ):
+            response = self.client.post(
+                f"/api/v1/audio/{self.audio.id}/transpose",
+                json={"semitones": 1},
+            )
+
+        self.assertEqual(response.status_code, 413)
+        transpose_file.assert_not_called()
+
+    def test_invalid_audio_and_memory_failure_map_to_expected_http_errors(self) -> None:
+        for failure, expected_status in (
+            (InvalidTranspositionAudio("invalid audio"), 422),
+            (MemoryError(), 413),
+        ):
+            with self.subTest(failure=type(failure).__name__):
+                with (
+                    patch(
+                        "app.api.audio.object_storage.download_to_path",
+                        side_effect=lambda *args: args[-1].write_bytes(b"source"),
+                    ),
+                    patch(
+                        "app.api.audio.extract_audio_metadata",
+                        return_value=AudioMetadata(1.0, 44100, 2),
+                    ),
+                    patch(
+                        "app.api.audio._transpose_audio_file",
+                        side_effect=failure,
+                    ),
+                ):
+                    response = self.client.post(
+                        f"/api/v1/audio/{self.audio.id}/transpose",
+                        json={"semitones": 1},
+                    )
+
+                self.assertEqual(response.status_code, expected_status)
 
     @patch("app.api.audio.object_storage.provider", "r2")
     @patch("app.api.audio.object_storage.download_to_path")
@@ -216,7 +339,7 @@ class AudioTransposeApiTests(unittest.TestCase):
         transpose_file,
         extract_metadata,
     ) -> None:
-        download_audio.side_effect = lambda _url, path: path.write_bytes(b"source")
+        download_audio.side_effect = lambda *args: args[-1].write_bytes(b"source")
         transpose_file.side_effect = RuntimeError("internal processing detail")
         extract_metadata.return_value = AudioMetadata(1.0, 44100, 2)
 
@@ -271,6 +394,28 @@ class AudioTransposeApiTests(unittest.TestCase):
             self.assertEqual(info.samplerate, sample_rate)
             self.assertEqual(info.channels, 2)
             self.assertAlmostEqual(info.duration, 1.0, places=2)
+
+
+class TransposeStreamCleanupTests(unittest.TestCase):
+    def test_closing_partial_response_stream_removes_temporary_directory(self) -> None:
+        import asyncio
+
+        async def read_then_close(path: Path, directory: Path) -> bytes:
+            stream = _stream_transposed_file(path, directory)
+            chunk = await anext(stream)
+            await stream.aclose()
+            return chunk
+
+        with tempfile.TemporaryDirectory() as parent:
+            directory = Path(parent) / "transpose"
+            directory.mkdir()
+            audio_path = directory / "transposed.wav"
+            audio_path.write_bytes(b"x" * (2 * 1024 * 1024))
+
+            first_chunk = asyncio.run(read_then_close(audio_path, directory))
+
+        self.assertEqual(len(first_chunk), 1024 * 1024)
+        self.assertFalse(directory.exists())
 
 
 if __name__ == "__main__":

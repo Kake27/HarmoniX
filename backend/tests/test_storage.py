@@ -1,12 +1,14 @@
+import io
 import os
 import unittest
 from unittest.mock import Mock
 from unittest.mock import patch
 
+from botocore.exceptions import ClientError
 from pydantic import ValidationError
 
 from app.core.config import Settings
-from app.core.storage import ObjectStorage
+from app.core.storage import ObjectStorage, StorageError
 
 
 def make_settings(**overrides) -> Settings:
@@ -62,9 +64,10 @@ class ObjectStorageTests(unittest.TestCase):
 
     @patch("app.core.storage.boto3.client")
     def test_storage_url_is_a_stable_bucket_and_key_reference(
-        self, _client_factory
+        self, client_factory
     ) -> None:
         storage = ObjectStorage(make_settings())
+        client_factory.assert_called_once()
 
         self.assertEqual(
             storage.make_storage_url("users/user-id/audio/audio-id.wav"),
@@ -79,12 +82,117 @@ class ObjectStorageTests(unittest.TestCase):
 
     @patch("app.core.storage.boto3.client")
     def test_rejects_storage_references_for_other_buckets(
-        self, _client_factory
+        self, client_factory
     ) -> None:
         storage = ObjectStorage(make_settings())
+        client_factory.assert_called_once()
 
         with self.assertRaises(ValueError):
             storage._parse_storage_url("s3://other-bucket/audio.wav")
+
+    @patch("app.core.storage.boto3.client")
+    def test_rejects_empty_and_path_traversing_storage_references(
+        self, client_factory
+    ) -> None:
+        storage = ObjectStorage(make_settings())
+        client_factory.assert_called_once()
+        for storage_url in (
+            "s3://harmonix-audio/",
+            "s3://harmonix-audio/../private.wav",
+            "https://harmonix-audio/track.wav",
+        ):
+            with self.subTest(storage_url=storage_url):
+                with self.assertRaises(ValueError):
+                    storage._parse_storage_url(storage_url)
+
+    @patch("app.core.storage.boto3.client")
+    def test_upload_passes_content_type_and_returns_object_reference(
+        self, client_factory
+    ) -> None:
+        client = Mock()
+        client_factory.return_value = client
+        storage = ObjectStorage(make_settings())
+
+        result = storage.upload_fileobj(
+            io.BytesIO(b"audio"),
+            "users/user/track.wav",
+            "audio/wav",
+        )
+
+        self.assertEqual(
+            result,
+            "s3://harmonix-audio/users/user/track.wav",
+        )
+        client.upload_fileobj.assert_called_once_with(
+            unittest.mock.ANY,
+            "harmonix-audio",
+            "users/user/track.wav",
+            ExtraArgs={"ContentType": "audio/wav"},
+        )
+
+    @patch("app.core.storage.boto3.client")
+    def test_upload_failure_is_mapped_to_storage_error(self, client_factory) -> None:
+        client = Mock()
+        client.upload_fileobj.side_effect = ClientError(
+            {"Error": {"Code": "AccessDenied", "Message": "denied"}},
+            "PutObject",
+        )
+        client_factory.return_value = client
+        storage = ObjectStorage(make_settings())
+
+        with self.assertRaisesRegex(StorageError, "Could not store"):
+            storage.upload_fileobj(io.BytesIO(b"audio"), "track.wav", "audio/wav")
+
+    @patch("app.core.storage.boto3.client")
+    def test_download_writes_to_file_and_maps_storage_failure(
+        self, client_factory
+    ) -> None:
+        client = Mock()
+        client.download_fileobj.side_effect = (
+            lambda *args: args[-1].write(b"audio")
+        )
+        client_factory.return_value = client
+        storage = ObjectStorage(make_settings())
+
+        destination = io.BytesIO()
+        storage.download_fileobj(
+            "s3://harmonix-audio/users/user/track.wav",
+            destination,
+        )
+        self.assertEqual(destination.getvalue(), b"audio")
+
+        client.download_fileobj.side_effect = ClientError(
+            {"Error": {"Code": "NoSuchKey", "Message": "missing"}},
+            "GetObject",
+        )
+        with self.assertRaisesRegex(StorageError, "Could not retrieve"):
+            storage.download_fileobj(
+                "s3://harmonix-audio/users/user/track.wav",
+                io.BytesIO(),
+            )
+
+    @patch("app.core.storage.boto3.client")
+    def test_object_size_malformed_metadata_and_delete_errors_are_mapped(
+        self, client_factory
+    ) -> None:
+        client = Mock()
+        client.head_object.return_value = {}
+        client_factory.return_value = client
+        storage = ObjectStorage(make_settings())
+
+        with self.assertRaisesRegex(StorageError, "Could not retrieve"):
+            storage.get_object_size(
+                "s3://harmonix-audio/users/user/track.wav"
+            )
+
+        client.delete_object.side_effect = ClientError(
+            {"Error": {"Code": "AccessDenied", "Message": "denied"}},
+            "DeleteObject",
+        )
+        with self.assertRaisesRegex(StorageError, "Could not remove"):
+            storage.delete_object(
+                "s3://harmonix-audio/users/user/track.wav"
+            )
 
     @patch("app.core.storage.boto3.client")
     def test_reads_object_size_from_storage_metadata(self, client_factory) -> None:
@@ -151,6 +259,25 @@ class ObjectStorageTests(unittest.TestCase):
                 "form-data",
                 900,
             )
+
+    @patch("app.core.storage.boto3.client")
+    def test_presign_failure_is_mapped_to_storage_error(self, client_factory) -> None:
+        client = Mock()
+        client.generate_presigned_url.side_effect = ClientError(
+            {"Error": {"Code": "AccessDenied", "Message": "denied"}},
+            "GetObject",
+        )
+        client_factory.return_value = client
+        storage = ObjectStorage(make_settings())
+
+        with self.assertRaisesRegex(StorageError, "Could not prepare access"):
+            storage.create_presigned_get_url(
+                "s3://harmonix-audio/users/user/track.wav",
+                "track.wav",
+                "inline",
+                900,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

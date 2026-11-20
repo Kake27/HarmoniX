@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from app.api.deps import get_db
 from app.core.auth import get_current_user
 from app.core.audio_metadata import AudioMetadata
+from app.core.storage import StorageError
 from app.main import app
 from app.models.user import User
 
@@ -89,6 +90,69 @@ class AudioUploadApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 415)
         upload_fileobj.assert_not_called()
 
+    @patch("app.api.audio.object_storage.upload_fileobj")
+    def test_upload_rejects_empty_file_without_storing_it(
+        self, upload_fileobj
+    ) -> None:
+        response = self.client.post(
+            "/api/v1/audio",
+            files={"file": ("track.wav", b"", "audio/wav")},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["detail"], "Uploaded file is empty.")
+        upload_fileobj.assert_not_called()
+
+    @patch("app.api.audio.MAX_UPLOAD_BYTES", 3)
+    @patch("app.api.audio.object_storage.upload_fileobj")
+    def test_upload_rejects_content_over_size_limit(
+        self, upload_fileobj
+    ) -> None:
+        response = self.client.post(
+            "/api/v1/audio",
+            files={"file": ("track.wav", b"four", "audio/wav")},
+        )
+
+        self.assertEqual(response.status_code, 413)
+        upload_fileobj.assert_not_called()
+
+    @patch("app.api.audio.extract_audio_metadata")
+    @patch("app.api.audio.object_storage.upload_fileobj")
+    def test_upload_sanitizes_client_filename_and_uses_audio_content_type(
+        self, upload_fileobj, extract_metadata
+    ) -> None:
+        upload_fileobj.return_value = "s3://harmonix-audio/users/test/audio/track.wav"
+        extract_metadata.return_value = AudioMetadata(None, None, None)
+
+        response = self.client.post(
+            "/api/v1/audio",
+            files={"file": ("../../track.wav", b"audio bytes", "application/octet-stream")},
+        )
+
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(self.db.audio.original_filename, "track.wav")
+        self.assertTrue(upload_fileobj.call_args.args[1].startswith(
+            f"{self.user.id}/audio/"
+        ))
+        self.assertEqual(upload_fileobj.call_args.args[2], "audio/wav")
+
+    @patch(
+        "app.api.audio.object_storage.upload_fileobj",
+        side_effect=StorageError("private storage details"),
+    )
+    def test_storage_failure_is_reported_without_internal_details(
+        self, upload_fileobj
+    ) -> None:
+        response = self.client.post(
+            "/api/v1/audio",
+            files={"file": ("track.wav", b"audio bytes", "audio/wav")},
+        )
+
+        self.assertEqual(response.status_code, 502)
+        self.assertNotIn("private storage details", response.text)
+        self.assertIsNone(self.db.audio)
+        upload_fileobj.assert_called_once()
+
     @patch("app.api.audio.object_storage.delete_object")
     @patch("app.api.audio.object_storage.upload_fileobj")
     @patch("app.api.audio.extract_audio_metadata")
@@ -111,6 +175,29 @@ class AudioUploadApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 500)
         delete_object.assert_called_once_with(storage_url)
+        self.assertIsNone(self.db.audio)
+
+    @patch("app.api.audio.object_storage.delete_object")
+    @patch(
+        "app.api.audio.extract_audio_metadata",
+        side_effect=RuntimeError("private processing detail"),
+    )
+    @patch("app.api.audio.object_storage.upload_fileobj")
+    def test_metadata_failure_cleans_up_uploaded_object(
+        self, upload_fileobj, extract_metadata, delete_object
+    ) -> None:
+        storage_url = "s3://harmonix-audio/users/test/audio/test.wav"
+        upload_fileobj.return_value = storage_url
+
+        response = self.client.post(
+            "/api/v1/audio",
+            files={"file": ("track.wav", b"audio bytes", "audio/wav")},
+        )
+
+        self.assertEqual(response.status_code, 500)
+        self.assertNotIn("private processing detail", response.text)
+        delete_object.assert_called_once_with(storage_url)
+        extract_metadata.assert_called_once()
         self.assertIsNone(self.db.audio)
 
     @patch("app.api.audio.extract_audio_metadata")
