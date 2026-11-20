@@ -38,3 +38,17 @@ python -m unittest discover -s tests -v
 
 The standard suite uses mocked Supabase and R2 boundaries and does not require
 production credentials or a live database.
+
+## Run frontend checks
+
+Install the frontend dependencies, then run its unit tests and production
+type-check/build from the `frontend` directory:
+
+```sh
+npm ci
+npm test
+npm run build
+```
+
+Frontend tests mock Supabase, API requests, and browser media playback, so they
+do not require live services or audio assets.
