@@ -27,6 +27,10 @@ secrets. Keep database passwords and R2 secret keys private; do not commit `.env
 `docker compose down` stops and removes the app containers; it does not delete
 database records or objects stored in R2.
 
+GitHub Actions validates the Compose configuration and builds both Docker images
+on pushes and pull requests. The validation uses `.env.example` placeholders and
+does not publish images or require production credentials.
+
 ## Run backend tests
 
 Install the backend dependencies, then run the test suite from the `backend`
