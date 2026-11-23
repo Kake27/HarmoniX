@@ -14,6 +14,7 @@ interface AudioUploadModalProps {
   selectedFile: File | null;
   uploadedAudio: UploadedAudio | null;
   analysis: AnalysisResponse | null;
+  isAnalysisQueued?: boolean;
   bpm: BPMData | null;
   musicalKey: MusicalKeyData | null;
   uploadError: string;
@@ -31,6 +32,7 @@ export function AudioUploadModal({
   selectedFile,
   uploadedAudio,
   analysis,
+  isAnalysisQueued = false,
   bpm,
   musicalKey,
   uploadError,
@@ -135,18 +137,34 @@ export function AudioUploadModal({
             <button
               type="button"
               onClick={onAnalyse}
-              disabled={!uploadedAudio || busy}
+              disabled={!uploadedAudio || busy || isAnalysisQueued}
               className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border border-field-line px-4 py-3 text-sm font-medium text-ink transition-colors hover:border-field-hover hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {isAnalyzing && <LoaderCircle className="h-4 w-4 animate-spin text-accent" />}
-              {isAnalyzing ? "Analysing stored track..." : "Analyse track"}
+              {isAnalyzing
+                ? "Analysing stored track..."
+                : isAnalysisQueued
+                  ? "Analysis queued"
+                  : "Analyse track"}
             </button>
           </div>
 
-          {uploadedAudio && !isUploading && (
+          {uploadedAudio && !isUploading && !isAnalysisQueued && (
             <p role="status" className="text-sm text-accent">
               Upload complete. Your track is stored and ready for analysis.
             </p>
+          )}
+
+          {isAnalysisQueued && (
+            <div
+              role="status"
+              className="rounded-lg border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-accent"
+            >
+              <p className="font-medium">Analysis queued!</p>
+              <p className="mt-1 text-xs text-muted">
+                Your track has been added to the background processing queue. You can close this dialog; your library list will show the updated status when processing completes.
+              </p>
+            </div>
           )}
 
           {isAnalyzing && (

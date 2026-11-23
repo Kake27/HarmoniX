@@ -87,6 +87,13 @@ export interface AnalysisResponse {
   results: Record<string, AnalyserResult>;
 }
 
+export interface QueuedAnalysisResponse {
+  status: "QUEUED";
+  audio_id: string;
+  task_id: string;
+  message: string;
+}
+
 export interface AudioTransposeRequest {
   semitones: number;
 }
@@ -274,10 +281,15 @@ export const api = {
     return apiDeleteRequest(`/audio/${encodeURIComponent(audioId)}`);
   },
 
-  analyseStoredAudio(audioId: string): Promise<AnalysisResponse> {
+  analyseStoredAudio(
+    audioId: string,
+  ): Promise<QueuedAnalysisResponse | AnalysisResponse> {
     const formData = new FormData();
     formData.append("audio_id", audioId);
-    return apiFormRequest<AnalysisResponse>("/analyse", formData);
+    return apiFormRequest<QueuedAnalysisResponse | AnalysisResponse>(
+      "/analyse",
+      formData,
+    );
   },
 
   transposeAudio(

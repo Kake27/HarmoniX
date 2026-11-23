@@ -80,6 +80,7 @@ export default function HomePage() {
   const [uploadError, setUploadError] = useState("");
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
   const [analysisOwnerId, setAnalysisOwnerId] = useState<string | null>(null);
+  const [isAnalysisQueued, setIsAnalysisQueued] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState("");
 
@@ -171,6 +172,7 @@ export default function HomePage() {
     setAnalysisError("");
     setAnalysis(null);
     setAnalysisOwnerId(null);
+    setIsAnalysisQueued(false);
     setUploadedAudio(null);
     setUploadedAudioOwnerId(null);
 
@@ -246,11 +248,16 @@ export default function HomePage() {
     ) return;
     setAnalysisError("");
     setAnalysis(null);
+    setIsAnalysisQueued(false);
     setIsAnalyzing(true);
 
     try {
       const result = await api.analyseStoredAudio(uploadedAudio.id);
-      setAnalysis(result);
+      if ("results" in result && result.results) {
+        setAnalysis(result as AnalysisResponse);
+      } else {
+        setIsAnalysisQueued(true);
+      }
       setAnalysisOwnerId(user?.id ?? null);
       void loadLibrary();
     } catch (error: unknown) {
@@ -365,13 +372,17 @@ export default function HomePage() {
           selectedFile={visibleSelectedFile}
           uploadedAudio={visibleUploadedAudio}
           analysis={visibleAnalysis}
+          isAnalysisQueued={isAnalysisQueued}
           bpm={bpm}
           musicalKey={musicalKey}
           uploadError={uploadError}
           analysisError={analysisError}
           isUploading={isUploading}
           isAnalyzing={isAnalyzing}
-          onClose={() => setUploadOpen(false)}
+          onClose={() => {
+            setUploadOpen(false);
+            setIsAnalysisQueued(false);
+          }}
           onFileChange={handleFileChange}
           onUpload={() => void handleUpload()}
           onAnalyse={() => void handleAnalyse()}
