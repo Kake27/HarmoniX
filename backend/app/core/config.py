@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     r2_secret_access_key: str
     r2_bucket_name: str
 
+    redis_url: str = "redis://localhost:6379"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

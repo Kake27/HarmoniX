@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.11-slim AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -22,6 +22,9 @@ COPY --chown=harmonix:harmonix alembic.ini ./alembic.ini
 
 USER harmonix
 
-EXPOSE 8000
+FROM base AS worker
+CMD ["celery", "-A", "app.core.celery_app.app", "worker", "--loglevel=info"]
 
+FROM base AS api
+EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

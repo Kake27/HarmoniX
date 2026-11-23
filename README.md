@@ -1,5 +1,8 @@
 # Harmonix
 
+For an implementation-focused project map, API/data-flow details, test
+commands, and known gaps, see [Harmonix_AI_Agent_Handoff.md](./Harmonix_AI_Agent_Handoff.md).
+
 ## Run with Docker Compose
 
 Docker Compose builds and runs the React frontend and FastAPI backend. Audio
