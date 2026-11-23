@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 AnalysisStatus = Literal[
     "PENDING",
+    "QUEUED",
     "PROCESSING",
     "COMPLETED",
     "PARTIAL",

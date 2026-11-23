@@ -3,6 +3,7 @@ import { LoaderCircle } from "lucide-react";
 import type { AnalysisStatus } from "../../services/api";
 
 const STATUS_DISPLAY: Record<AnalysisStatus, { label: string; text: string; dot: string }> = {
+  QUEUED: { label: "Analysis queued", text: "text-accent", dot: "bg-subtle" },
   COMPLETED: { label: "Analysis complete", text: "text-accent", dot: "bg-accent shadow-[0_0_10px] shadow-accent/50" },
   PARTIAL: { label: "Analysis partial", text: "text-warn", dot: "bg-warn" },
   PROCESSING: { label: "Analysing", text: "text-accent", dot: "" },

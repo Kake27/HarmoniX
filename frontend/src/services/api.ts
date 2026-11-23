@@ -23,6 +23,7 @@ export interface UploadedAudio {
 
 export type AnalysisStatus =
   | "PENDING"
+  | "QUEUED"
   | "PROCESSING"
   | "COMPLETED"
   | "PARTIAL"

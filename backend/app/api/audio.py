@@ -192,6 +192,8 @@ def _normalize_analysis_status(
     bpm: float | None,
     musical_key: str | None,
 ) -> AnalysisStatus:
+    if status_value == "QUEUED":
+        return "QUEUED"
     if status_value == "PROCESSING":
         return "PROCESSING"
     if status_value == "COMPLETED":

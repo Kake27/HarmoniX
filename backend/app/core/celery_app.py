@@ -6,6 +6,7 @@ celery_app = Celery(
     "harmonix",
     broker=settings.redis_url,
     backend=settings.redis_url,
+    include=["app.tasks.analysis"]
 )
 
 celery_app.conf.update(

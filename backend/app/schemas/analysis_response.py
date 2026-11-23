@@ -1,4 +1,5 @@
 from typing import Any, Literal
+import uuid
 
 from pydantic import BaseModel
 
@@ -14,3 +15,10 @@ class AnalysisResponse(BaseModel):
     duration_seconds: float
     sample_rate: int
     results: dict[str, AnalyserResult]
+
+
+class QueuedAnalysisResponse(BaseModel):
+    status: Literal["QUEUED"] = "QUEUED"
+    audio_id: uuid.UUID
+    task_id: str
+    message: str = "Audio analysis has been queued."
