@@ -14,6 +14,8 @@ class Settings(BaseSettings):
 
     redis_url: str = "redis://localhost:6379"
 
+    detect_chords_url: str = "http://localhost:8001"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

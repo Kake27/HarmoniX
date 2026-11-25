@@ -1,0 +1,11 @@
+.git
+__pycache__
+*.pyc
+.venv
+venv
+*.ipynb
+.pytest_cache
+data/
+tests/
+*.wav
+*.mp3

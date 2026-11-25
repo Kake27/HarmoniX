@@ -1,9 +1,14 @@
+from concurrent.futures import ThreadPoolExecutor
 import logging
-import tempfile
 from pathlib import Path
+import tempfile
+from typing import Any
 from uuid import UUID
 
+import httpx
+
 from app.core.celery_app import celery_app
+from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.storage import StorageError, object_storage
 from app.models.audio_data import AudioFileData
@@ -19,6 +24,53 @@ def _analysis_value(results: dict, analyzer_name: str, field: str):
         return None
     data = analyzer.get("data")
     return data.get(field) if isinstance(data, dict) else None
+
+
+def _fetch_chords_from_service(temp_path: Path) -> dict[str, Any]:
+    chord_url = f"{settings.detect_chords_url.rstrip('/')}/predict_chords"
+    try:
+        with open(temp_path, "rb") as f:
+            audio_bytes = f.read()
+
+        with httpx.Client(timeout=180.0) as client:
+            response = client.post(
+                chord_url,
+                content=audio_bytes,
+                headers={"Content-Type": "audio/wav"},
+            )
+
+        if response.status_code == 200:
+            payload = response.json()
+            return {
+                "status": "success",
+                "data": payload.get("data"),
+                "error": None,
+            }
+        else:
+            logger.warning(
+                "Chord service returned non-200 status %d: %s",
+                response.status_code,
+                response.text,
+            )
+            return {
+                "status": "failed",
+                "data": None,
+                "error": f"Chord service error (HTTP {response.status_code}).",
+            }
+    except httpx.TimeoutException:
+        logger.warning("Chord service timed out for %s", temp_path.name)
+        return {
+            "status": "failed",
+            "data": None,
+            "error": "Chord detection service timed out.",
+        }
+    except Exception as exc:
+        logger.warning("Chord service request failed: %s", exc)
+        return {
+            "status": "failed",
+            "data": None,
+            "error": "Chord detection service was unavailable.",
+        }
 
 
 @celery_app.task(bind=True, name="tasks.analyse_audio")
@@ -67,20 +119,37 @@ def analyse_audio(self, audio_id: str, user_id: str) -> dict:
             db.commit()
             return {"status": "FAILED", "audio_id": audio_id, "error": analysis.error_message}
 
-        try:
-            results = run_analysis(temp_path)
-        except ValueError as exc:
-            logger.warning("Analysis validation failed for %s: %s", audio_id, exc)
-            analysis.status = "FAILED"
-            analysis.error_message = str(exc)
-            db.commit()
-            return {"status": "FAILED", "audio_id": audio_id, "error": str(exc)}
-        except Exception:
-            logger.exception("Analysis pipeline failed for %s", audio_id)
-            analysis.status = "FAILED"
-            analysis.error_message = "Could not decode or analyse this audio file."
-            db.commit()
-            return {"status": "FAILED", "audio_id": audio_id, "error": analysis.error_message}
+        # Run local librosa analyzers and remote chord service in parallel
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            local_future = executor.submit(run_analysis, temp_path)
+            chord_future = executor.submit(_fetch_chords_from_service, temp_path)
+
+            try:
+                results = local_future.result()
+            except ValueError as exc:
+                logger.warning("Analysis validation failed for %s: %s", audio_id, exc)
+                analysis.status = "FAILED"
+                analysis.error_message = str(exc)
+                db.commit()
+                return {"status": "FAILED", "audio_id": audio_id, "error": str(exc)}
+            except Exception:
+                logger.exception("Analysis pipeline failed for %s", audio_id)
+                analysis.status = "FAILED"
+                analysis.error_message = "Could not decode or analyse this audio file."
+                db.commit()
+                return {"status": "FAILED", "audio_id": audio_id, "error": analysis.error_message}
+
+            try:
+                chord_result = chord_future.result()
+            except Exception as exc:
+                logger.warning("Unexpected error in chord future: %s", exc)
+                chord_result = {
+                    "status": "failed",
+                    "data": None,
+                    "error": "Chord detection service failed unexpectedly.",
+                }
+
+        results["results"]["chords"] = chord_result
 
         successful_results = [
             item for item in results["results"].values() if item.get("status") == "success"
